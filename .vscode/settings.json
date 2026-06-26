@@ -1,0 +1,28 @@
+{
+  "workbench.colorTheme": "Dracula Theme",
+  // Disable Copilot autocomplete globally
+  "github.copilot.enable": {
+    "*": false,
+    "go": false
+  },
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#3d3d3d",
+    "activityBar.background": "#3d3d3d",
+    "activityBar.foreground": "#e7e7e7",
+    "activityBar.inactiveForeground": "#e7e7e799",
+    "activityBarBadge.background": "#787828",
+    "activityBarBadge.foreground": "#e7e7e7",
+    "commandCenter.border": "#e7e7e799",
+    "sash.hoverBorder": "#3d3d3d",
+    "statusBar.background": "#242424",
+    "statusBar.foreground": "#e7e7e7",
+    "statusBarItem.hoverBackground": "#3d3d3d",
+    "statusBarItem.remoteBackground": "#242424",
+    "statusBarItem.remoteForeground": "#e7e7e7",
+    "titleBar.activeBackground": "#242424",
+    "titleBar.activeForeground": "#e7e7e7",
+    "titleBar.inactiveBackground": "#24242499",
+    "titleBar.inactiveForeground": "#e7e7e799"
+  },
+  "peacock.color": "#242424"
+}

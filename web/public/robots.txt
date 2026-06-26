@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+
+# Allow all search engines to crawl the site
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+# Disallow crawling of API endpoints and admin areas
+Disallow: /api/
+Disallow: /admin/
+Disallow: /private/
+
+# Allow crawling of main pages
+Allow: /
+
+# Sitemap location
+Sitemap: https://goilerplate.shrood.app/sitemap.xml
+
+# Crawl delay (optional - 1 second delay between requests)
+Crawl-delay: 1

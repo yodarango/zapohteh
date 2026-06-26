@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dr-bg: #130e21;
+  --color-dr-surface: #231645;
+  --color-dr-surface-light: #443564;
+  --color-dr-text: #f1eaff;
+  --color-dr-text-muted: #898eba;
+  --color-dr-accent: #794ef5;
+  --color-dr-accent-light: #b293fe;
+  --color-dr-danger: #ff4d62;
+  --color-dr-warning: #ffc107;
+  --color-dr-success: #00ffc3;
+  --color-dr-info: #00cfff;
+
+  --animate-heart: heartAnimation 1s ease-in-out infinite;
+
+  @keyframes heartAnimation {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0);
+    }
+    20% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.2);
+    }
+    40% {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    60% {
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+    80% {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-dr-bg text-dr-text;
+}
+
+#root {
+  @apply min-h-screen;
+}

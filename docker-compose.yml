@@ -1,0 +1,21 @@
+services:
+  goilerplate_app:
+    build: .
+    container_name: ${COMPOSE_PROJECT_NAME}
+    ports:
+      - "8008:8008"
+    environment:
+      - DB_PATH=${DB_PATH:-/app/data/app.db}
+      - STATIC_PATH=web/dist
+    networks:
+      - app-network
+    volumes:
+      - .:/app
+      - sqlite_data:/app/data
+
+networks:
+  app-network:
+    driver: bridge
+volumes:
+  sqlite_data:
+    driver: local
