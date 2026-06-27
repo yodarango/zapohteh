@@ -12,6 +12,8 @@ import (
 // Research represents a topic research request together with the chapters that
 // are generated for it.
 type Research struct {
+	// Title is used only to name the folder where the research is stored.
+	Title    string   `json:"title"`
 	Topic    string   `json:"input"`
 	Level    string   `json:"level"`
 	Chapters []string `json:"chapters"`
@@ -121,9 +123,15 @@ func (r *Research) WriteChaptersFile() error {
 
 /**************************************************************************************
 * folderPath returns the path of the folder that holds the research for this topic.
+* The folder is named after the title, falling back to the topic description when no
+* title was provided.
 **************************************************************************************/
 func (r *Research) folderPath() string {
-	return filepath.Join("data", utils.SanitizeFilename(r.Topic))
+	name := r.Title
+	if strings.TrimSpace(name) == "" {
+		name = r.Topic
+	}
+	return filepath.Join("data", utils.SanitizeFilename(name))
 }
 
 /**************************************************************************************
@@ -291,8 +299,13 @@ func (r *Research) ReadContent() (string, error) {
 		return "", fmt.Errorf("topic not found: %w", err)
 	}
 
+	heading := r.Title
+	if strings.TrimSpace(heading) == "" {
+		heading = r.Topic
+	}
+
 	var b strings.Builder
-	b.WriteString("# " + r.Topic + "\n\n")
+	b.WriteString("# " + heading + "\n\n")
 
 	for _, line := range strings.Split(string(data), "\n") {
 		title := strings.TrimSpace(line)

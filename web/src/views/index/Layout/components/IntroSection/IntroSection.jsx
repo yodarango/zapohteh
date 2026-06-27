@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, TextArea } from "@ds";
+import { Button, Input, TextArea } from "@ds";
 import { API_POST_LEARN_ABOUT, ROUTE_LEARN } from "@constants";
 import { streamPost } from "@utils";
 
@@ -13,6 +13,7 @@ const RESEARCH_LEVELS = [
 
 export const IntroSection = () => {
   const navigate = useNavigate();
+  const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export const IntroSection = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!title.trim() || !input.trim() || loading) return;
 
     // reset progress state before starting a new research
     setLoading(true);
@@ -37,7 +38,7 @@ export const IntroSection = () => {
     try {
       await streamPost({
         url: API_POST_LEARN_ABOUT,
-        body: { input: input.trim(), level },
+        body: { title: title.trim(), input: input.trim(), level },
         onEvent: (event, data) => {
           const parsed = JSON.parse(data);
           if (event === "chapters") setChapters(parsed);
@@ -64,6 +65,12 @@ export const IntroSection = () => {
         </h1>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
           <div className='flex flex-col gap-3'>
+            {/* Title only names the storage folder, nothing else */}
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder='Title...'
+            />
             <TextArea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -94,9 +101,16 @@ export const IntroSection = () => {
               ))}
             </div>
           </div>
-          <Button type='submit' primary isLoading={loading} className='w-full'>
-            Submit
-          </Button>
+          {loading ? (
+            <div className='flex items-center justify-center gap-2 py-2.5 text-dr-text'>
+              <ion-icon name='book-outline'></ion-icon>
+              <span>Reading what others have written...</span>
+            </div>
+          ) : (
+            <Button type='submit' primary className='w-full'>
+              Submit
+            </Button>
+          )}
         </form>
 
         {error && <p className='mt-4 text-sm text-red-400'>{String(error)}</p>}

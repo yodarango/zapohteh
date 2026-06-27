@@ -147,7 +147,12 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendEvent("done", map[string]string{"topic": research.Topic})
+	// the folder is named after the title, so report it for navigation
+	name := research.Title
+	if strings.TrimSpace(name) == "" {
+		name = research.Topic
+	}
+	sendEvent("done", map[string]string{"topic": name})
 }
 
 /************************************************************************
@@ -165,7 +170,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	research := models.Research{Topic: name}
+	research := models.Research{Title: name}
 	content, err := research.ReadContent()
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
