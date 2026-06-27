@@ -32,12 +32,6 @@ const (
 const chaptersFileName = "chapters.md"
 const donePrefix = "✅ "
 
-// systemRole tells the AI model what its job is for every request.
-const systemRole = "You are a scholarly research assistant machine that helps investigate any topic thoroughly, accurately and objectively."
-
-// chaptersFormatInstruction forces the chapter list to be easily parsable.
-const chaptersFormatInstruction = "Return ONLY a comma separated list of chapter titles without any other text, numbering or formatting."
-
 /**************************************************************************************
 * Run executes the full research pipeline: it generates the chapters from the topic,
 * writes them to disk and then elaborates each chapter one by one.
@@ -75,9 +69,19 @@ func (r *Research) Run() error {
 * list of chapters according to the requested research level.
 **************************************************************************************/
 func (r *Research) GenerateChapters() error {
-	system := systemRole + " " + chaptersFormatInstruction
+	system := fmt.Sprintf(`
+	You are a scholarly research assistant machine that helps structure the analysis of any topic by systematizing its analysis into chapters.
+	The user will give you a description of the topic they want to research according to the level of depth specified by them. 
+	Your job is to provide a set of chapters to divide the topic into and facilitate its analysis.
+	Return ONLY a comma separated list of chapter titles without any other text, numbering or formatting.
+	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the chapters.
+	`)
+
 	user := fmt.Sprintf(
-		"Break down the topic \"%s\" into a list of chapters for a %s research.",
+		`Topic Description: 
+		%s
+		Research Depth Level: 
+		%s`,
 		r.Topic, levelDescription(r.Level),
 	)
 
@@ -129,11 +133,11 @@ func (r *Research) folderPath() string {
 func levelDescription(level string) string {
 	switch level {
 	case ResearchLevelLow:
-		return "shallow and introductory (around 3 to 5 chapters)"
+		return "Shallow and introductory (around 3 to 5 chapters)"
 	case ResearchLevelHigh:
-		return "deep and comprehensive (around 10 to 15 chapters). The nature of this research is academic in nature and very liekly used in post graduate scholarly research, be sure to site your sources and use scholarly and reliable sources."
+		return "Deep and comprehensive (around 10 to 15 chapters). The nature of this research is academic in nature and very liekly used in post graduate scholarly research, be sure to site your sources and use scholarly and reliable sources."
 	default:
-		return "moderately detailed (around 6 to 9 chapters). The nature of this research is semi-academic in nature and probably used for a research paper at a master's level, be sure to site your sources and use reliable sources."
+		return "Moderately detailed (around 6 to 9 chapters). The nature of this research is semi-academic in nature and probably used for a research paper at a master's level, be sure to site your sources and use reliable sources."
 	}
 }
 
@@ -232,19 +236,35 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 	var prompt string
 	if len(done) == 0 {
 		prompt = fmt.Sprintf(
-			"I am researching %s and I have the following chapters %s. "+
-				"I want you to describe chapter %s and nothing else.",
+			`Research Topic Description: 
+			%s 
+			Research chapters:
+			 %s
+			Chpater I want you to describe: 
+			%s.
+			Describe nothing else`,
 			r.Topic, strings.Join(allChapters, ", "), chapter,
 		)
 	} else {
 		prompt = fmt.Sprintf(
-			"I am researching %s. I already have the following chapters %s. "+
-				"Now describe chapter %s and nothing else.",
+			`Research Topic Description:
+			%s. 
+			I already have the text for the following chapters:
+			%s.
+			Now describe chapter %s and nothing else.`,
 			r.Topic, strings.Join(done, ", "), chapter,
 		)
 	}
 
-	description, err := lib.NewOpenAIService().Ask(systemRole, prompt)
+	systemDescription := `You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively. 
+	The user will give you the description of the topic they are interrested in, as well as the depth of your dscription. Please respect their depth description and do not provide more or less details than needed.
+	Cite your sources and make sure to use reliable and scholarly ones.
+	The user may give you a list of chapters that they already have the description for so you know what they are missing. 
+	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
+	`
+
+
+	description, err := lib.NewOpenAIService().Ask(systemDescription, prompt)
 	if err != nil {
 		return err
 	}
