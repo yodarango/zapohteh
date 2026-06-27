@@ -13,6 +13,9 @@ const ROUTE_POST_UPDATE_PROFILE = ROUTE_API_BASE + "/update-profile"
 const ROUTE_GET_AUTH_SAMPLE = ROUTE_API_BASE + "/auth-sample"
 const ROUTE_GET_PUBLIC_SAMPLE = ROUTE_API_BASE + "/public-sample"
 
+// learn about
+const ROUTE_POST_LEARN_ABOUT = ROUTE_API_BASE + "/learn-about"
+
 // context must have a predefined custom context key type
 type contextKey string
 const USER_CONTEXT_AUTH_KEY contextKey = "currentUser"

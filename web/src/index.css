@@ -1,5 +1,5 @@
 @import "tailwindcss";
-
+/* 
 @theme {
   --color-dr-bg: #130e21;
   --color-dr-surface: #231645;
@@ -50,4 +50,4 @@ body {
 
 #root {
   @apply min-h-screen;
-}
+} */

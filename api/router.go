@@ -8,6 +8,7 @@ import (
 	"goilerplate/internal/utils"
 	"net/http"
 	"os"
+	"strings"
 )
 
 func Router () http.Handler {
@@ -16,6 +17,7 @@ func Router () http.Handler {
 
 	mux.HandleFunc(constants.ROUTE_GET_AUTH_SAMPLE, models.Authenticate(SampleAuth))
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
+	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, LearnAbout)
 
 	// auth routes (no authentication required)
 	mux.HandleFunc(constants.ROUTE_POST_CHANGE_PASSWORD, models.Authenticate(ChangePassword))
@@ -87,8 +89,52 @@ func SampleAuth(w http.ResponseWriter, r *http.Request) {
 func SamplePub(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
-	
+
 	httpResponse.Data = "Hello"
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Handles a research request from the homepage form. It breaks the topic
+* down into chapters and elaborates each one using the AI model.
+*********************************************************************/
+func LearnAbout(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+	var research models.Research
+
+	err := json.NewDecoder(r.Body).Decode(&research)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(research.Topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	err = research.Run()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":    research.Topic,
+		"level":    research.Level,
+		"chapters": research.Chapters,
+	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)

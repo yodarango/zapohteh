@@ -13,6 +13,9 @@ export const API_POST_FORGOT_PASSWORD = API_BASE + "/forgot-password";
 export const API_POST_CHANGE_PASSWORD = API_BASE + "/change-password";
 export const API_POST_UPDATE_PROFILE = API_BASE + "/update-profile";
 
+// api learn routes
+export const API_POST_LEARN_ABOUT = API_BASE + "/learn-about";
+
 // user statuses
 export const USER_STATUS_PENDING = "pending";
 export const USER_STATUS_ACTIVE = "active";
