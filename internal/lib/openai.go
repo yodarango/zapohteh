@@ -47,19 +47,24 @@ func NewOpenAIService() *OpenAIService {
 }
 
 /**************************************************************************************
-* Ask sends a single prompt to the OpenAI chat completions endpoint and returns the
-* text content of the first choice.
+* Ask sends a system prompt and a user prompt to the OpenAI chat completions endpoint
+* and returns the text content of the first choice. The system prompt is optional and
+* is omitted when empty.
 **************************************************************************************/
-func (s *OpenAIService) Ask(prompt string) (string, error) {
+func (s *OpenAIService) Ask(systemPrompt, userPrompt string) (string, error) {
 	if s.APIKey == "" {
 		return "", fmt.Errorf("OpenAI API key is not configured")
 	}
 
+	messages := make([]chatMessage, 0, 2)
+	if systemPrompt != "" {
+		messages = append(messages, chatMessage{Role: "system", Content: systemPrompt})
+	}
+	messages = append(messages, chatMessage{Role: "user", Content: userPrompt})
+
 	reqBody := chatRequest{
-		Model: s.Model,
-		Messages: []chatMessage{
-			{Role: "user", Content: prompt},
-		},
+		Model:    s.Model,
+		Messages: messages,
 	}
 
 	payload, err := json.Marshal(reqBody)

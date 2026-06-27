@@ -15,6 +15,11 @@ type Research struct {
 	Topic    string   `json:"input"`
 	Level    string   `json:"level"`
 	Chapters []string `json:"chapters"`
+
+	// OnChapters is called once the chapter list has been generated.
+	OnChapters func([]string) `json:"-"`
+	// OnChapterDone is called every time a chapter has been described.
+	OnChapterDone func(string) `json:"-"`
 }
 
 // research depth levels
@@ -26,6 +31,12 @@ const (
 
 const chaptersFileName = "chapters.md"
 const donePrefix = "✅ "
+
+// systemRole tells the AI model what its job is for every request.
+const systemRole = "You are a scholarly research assistant machine that helps investigate any topic thoroughly, accurately and objectively."
+
+// chaptersFormatInstruction forces the chapter list to be easily parsable.
+const chaptersFormatInstruction = "Return ONLY a comma separated list of chapter titles without any other text, numbering or formatting."
 
 /**************************************************************************************
 * Run executes the full research pipeline: it generates the chapters from the topic,
@@ -46,6 +57,11 @@ func (r *Research) Run() error {
 		return err
 	}
 
+	// notify listeners about the generated chapter list
+	if r.OnChapters != nil {
+		r.OnChapters(r.Chapters)
+	}
+
 	err = r.ElaborateChapters()
 	if err != nil {
 		return err
@@ -59,14 +75,13 @@ func (r *Research) Run() error {
 * list of chapters according to the requested research level.
 **************************************************************************************/
 func (r *Research) GenerateChapters() error {
-	prompt := fmt.Sprintf(
-		"Break down the topic \"%s\" into a list of chapters for a %s research. "+
-			"Return ONLY a comma separated list of chapter titles without any other text, "+
-			"numbering or formatting.",
+	system := systemRole + " " + chaptersFormatInstruction
+	user := fmt.Sprintf(
+		"Break down the topic \"%s\" into a list of chapters for a %s research.",
 		r.Topic, levelDescription(r.Level),
 	)
 
-	response, err := lib.NewOpenAIService().Ask(prompt)
+	response, err := lib.NewOpenAIService().Ask(system, user)
 	if err != nil {
 		return err
 	}
@@ -200,6 +215,11 @@ func (r *Research) ElaborateChapters() error {
 		if err != nil {
 			return fmt.Errorf("failed to update chapters file: %w", err)
 		}
+
+		// notify listeners that this chapter has been described
+		if r.OnChapterDone != nil {
+			r.OnChapterDone(next)
+		}
 	}
 }
 
@@ -224,7 +244,7 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 		)
 	}
 
-	description, err := lib.NewOpenAIService().Ask(prompt)
+	description, err := lib.NewOpenAIService().Ask(systemRole, prompt)
 	if err != nil {
 		return err
 	}
@@ -236,4 +256,41 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 	}
 
 	return nil
+}
+
+/**************************************************************************************
+* ReadContent assembles the full research of a topic into a single markdown document.
+* It reads the chapters file for the order and then concatenates every chapter file
+* that has already been written.
+**************************************************************************************/
+func (r *Research) ReadContent() (string, error) {
+	folder := r.folderPath()
+
+	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
+	if err != nil {
+		return "", fmt.Errorf("topic not found: %w", err)
+	}
+
+	var b strings.Builder
+	b.WriteString("# " + r.Topic + "\n\n")
+
+	for _, line := range strings.Split(string(data), "\n") {
+		title := strings.TrimSpace(line)
+		if title == "" {
+			continue
+		}
+		title = strings.TrimSpace(strings.TrimPrefix(title, donePrefix))
+
+		content, err := os.ReadFile(filepath.Join(folder, utils.ToCamelCase(title)+".md"))
+		if err != nil {
+			// skip chapters that have not been described yet
+			continue
+		}
+
+		b.WriteString("## " + title + "\n\n")
+		b.Write(content)
+		b.WriteString("\n\n")
+	}
+
+	return b.String(), nil
 }

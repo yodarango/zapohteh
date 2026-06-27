@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button, TextArea } from "@ds";
-import { API_POST_LEARN_ABOUT } from "@constants";
-import { usePost } from "@utils";
+import { API_POST_LEARN_ABOUT, ROUTE_LEARN } from "@constants";
+import { streamPost } from "@utils";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
@@ -11,16 +12,48 @@ const RESEARCH_LEVELS = [
 ];
 
 export const IntroSection = () => {
+  const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
-  const { post, loading } = usePost({
-    url: API_POST_LEARN_ABOUT,
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [chapters, setChapters] = useState([]);
+  const [completed, setCompleted] = useState([]);
+  const [topic, setTopic] = useState("");
+  const [finished, setFinished] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    post({ input: input.trim(), level });
+    if (!input.trim() || loading) return;
+
+    // reset progress state before starting a new research
+    setLoading(true);
+    setError(null);
+    setChapters([]);
+    setCompleted([]);
+    setFinished(false);
+    setTopic("");
+
+    try {
+      await streamPost({
+        url: API_POST_LEARN_ABOUT,
+        body: { input: input.trim(), level },
+        onEvent: (event, data) => {
+          const parsed = JSON.parse(data);
+          if (event === "chapters") setChapters(parsed);
+          else if (event === "chapterDone")
+            setCompleted((prev) => [...prev, parsed]);
+          else if (event === "done") {
+            setTopic(parsed.topic);
+            setFinished(true);
+          } else if (event === "error") setError(parsed);
+        },
+      });
+    } catch (err) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -65,6 +98,42 @@ export const IntroSection = () => {
             Submit
           </Button>
         </form>
+
+        {error && <p className='mt-4 text-sm text-red-400'>{String(error)}</p>}
+
+        {/* Progress of each chapter as it gets completed */}
+        {chapters.length > 0 && (
+          <ul className='mt-6 flex flex-col gap-2 text-left'>
+            {chapters.map((chapter) => {
+              const isDone = completed.includes(chapter);
+              return (
+                <li
+                  key={chapter}
+                  className={`flex items-center gap-2 ${
+                    isDone ? "text-green-400" : "text-white/60"
+                  }`}
+                >
+                  <ion-icon
+                    name={isDone ? "checkmark-circle" : "ellipse-outline"}
+                  ></ion-icon>
+                  <span>{chapter}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {finished && (
+          <Button
+            success
+            className='mt-6 w-full'
+            onClick={() =>
+              navigate(`${ROUTE_LEARN}/${encodeURIComponent(topic)}`)
+            }
+          >
+            Read topic
+          </Button>
+        )}
       </div>
     </section>
   );

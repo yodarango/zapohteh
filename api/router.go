@@ -18,6 +18,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_AUTH_SAMPLE, models.Authenticate(SampleAuth))
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, LearnAbout)
+	mux.HandleFunc(constants.ROUTE_GET_TOPIC, GetTopic)
 
 	// auth routes (no authentication required)
 	mux.HandleFunc(constants.ROUTE_POST_CHANGE_PASSWORD, models.Authenticate(ChangePassword))
@@ -98,30 +99,74 @@ func SamplePub(w http.ResponseWriter, r *http.Request) {
 
 /************************************************************************
 * Handles a research request from the homepage form. It breaks the topic
-* down into chapters and elaborates each one using the AI model.
+* down into chapters and elaborates each one using the AI model, streaming
+* the progress back to the client using Server-Sent Events.
 *********************************************************************/
 func LearnAbout(w http.ResponseWriter, r *http.Request) {
-	var httpResponse models.HttpResponse
 	var research models.Research
 
 	err := json.NewDecoder(r.Body).Decode(&research)
 	if err != nil {
-		httpResponse.Error = fmt.Sprintf("%v", err)
-		httpResponse.Success = false
-		httpResponse.Data = nil
-		httpResponse.Send(w)
+		http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
 		return
 	}
 
 	if strings.TrimSpace(research.Topic) == "" {
-		httpResponse.Error = "topic is required"
+		http.Error(w, "topic is required", http.StatusBadRequest)
+		return
+	}
+
+	// configure the response as a Server-Sent Events stream
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	// sendEvent writes a single named SSE event with a JSON payload
+	sendEvent := func(event string, data interface{}) {
+		payload, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
+		flusher.Flush()
+	}
+
+	research.OnChapters = func(chapters []string) {
+		sendEvent("chapters", chapters)
+	}
+	research.OnChapterDone = func(chapter string) {
+		sendEvent("chapterDone", chapter)
+	}
+
+	err = research.Run()
+	if err != nil {
+		sendEvent("error", fmt.Sprintf("%v", err))
+		return
+	}
+
+	sendEvent("done", map[string]string{"topic": research.Topic})
+}
+
+/************************************************************************
+* Serves the assembled markdown content of a previously researched topic.
+*********************************************************************/
+func GetTopic(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	name := r.URL.Query().Get("name")
+	if strings.TrimSpace(name) == "" {
+		httpResponse.Error = "topic name is required"
 		httpResponse.Success = false
 		httpResponse.Data = nil
 		httpResponse.Send(w)
 		return
 	}
 
-	err = research.Run()
+	research := models.Research{Topic: name}
+	content, err := research.ReadContent()
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -131,9 +176,8 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpResponse.Data = map[string]interface{}{
-		"topic":    research.Topic,
-		"level":    research.Level,
-		"chapters": research.Chapters,
+		"topic":   name,
+		"content": content,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
