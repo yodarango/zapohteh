@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Input, TextArea } from "@ds";
+import { Button, Input, Switch, TextArea } from "@ds";
 import { API_POST_LEARN_ABOUT, ROUTE_LEARN } from "@constants";
 import { streamPost } from "@utils";
 
@@ -16,6 +16,7 @@ export const IntroSection = () => {
   const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
+  const [searchWeb, setSearchWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [chapters, setChapters] = useState([]);
@@ -38,7 +39,7 @@ export const IntroSection = () => {
     try {
       await streamPost({
         url: API_POST_LEARN_ABOUT,
-        body: { title: title.trim(), input: input.trim(), level },
+        body: { title: title.trim(), input: input.trim(), level, searchWeb },
         onEvent: (event, data) => {
           const parsed = JSON.parse(data);
           if (event === "chapters") setChapters(parsed);
@@ -58,11 +59,15 @@ export const IntroSection = () => {
   };
 
   return (
-    <section className='mx-auto max-w-[1200px] px-4 py-8'>
-      <div className='text-center p-5 mb-6 border border-blue-500 bg-[rgba(15,57,83,0.44)] rounded-2xl'>
-        <h1 className='text-2xl md:text-3xl font-bold mb-6'>
-          What do you want to learn about today
-        </h1>
+    <section>
+      <h1 className='mb-1 text-2xl font-bold text-dr-text'>
+        What do you want to learn about today
+      </h1>
+      <p className='mb-6 text-sm text-dr-text-muted'>
+        Describe a topic and we will research it for you, chapter by chapter.
+      </p>
+
+      <div className='rounded-2xl border border-dr-border bg-dr-surface-light p-6'>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
           <div className='flex flex-col gap-3'>
             {/* Title only names the storage folder, nothing else */}
@@ -82,10 +87,10 @@ export const IntroSection = () => {
               {RESEARCH_LEVELS.map((option) => (
                 <label
                   key={option.value}
-                  className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                  className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
                     level === option.value
-                      ? "border-blue-500 bg-blue-500/20 text-white"
-                      : "border-blue-500/40 text-white/60 hover:border-blue-500/70"
+                      ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                      : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
                   }`}
                 >
                   <input
@@ -100,10 +105,25 @@ export const IntroSection = () => {
                 </label>
               ))}
             </div>
+            {/* Toggle to let the model search the web while elaborating chapters */}
+            <div className='flex items-center justify-between'>
+              <span className='text-sm font-medium text-dr-text'>
+                Search the web
+              </span>
+              <Switch
+                primary
+                checked={searchWeb}
+                onChange={setSearchWeb}
+                disabled={loading}
+              />
+            </div>
           </div>
           {loading ? (
-            <div className='flex items-center justify-center gap-2 py-2.5 text-dr-text'>
-              <ion-icon name='book-outline'></ion-icon>
+            <div className='flex items-center justify-center gap-2 py-2.5 text-dr-text-muted'>
+              <ion-icon
+                name='book-outline'
+                className='text-dr-accent'
+              ></ion-icon>
               <span>Reading what others have written...</span>
             </div>
           ) : (
@@ -113,7 +133,9 @@ export const IntroSection = () => {
           )}
         </form>
 
-        {error && <p className='mt-4 text-sm text-red-400'>{String(error)}</p>}
+        {error && (
+          <p className='mt-4 text-sm text-dr-danger'>{String(error)}</p>
+        )}
 
         {/* Progress of each chapter as it gets completed */}
         {chapters.length > 0 && (
@@ -124,7 +146,7 @@ export const IntroSection = () => {
                 <li
                   key={chapter}
                   className={`flex items-center gap-2 ${
-                    isDone ? "text-green-400" : "text-white/60"
+                    isDone ? "text-dr-success" : "text-dr-text-muted"
                   }`}
                 >
                   <ion-icon

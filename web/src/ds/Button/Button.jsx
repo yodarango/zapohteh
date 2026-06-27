@@ -15,18 +15,19 @@ export const Button = (props) => {
   } = props;
 
   const baseClasses =
-    "flex items-center justify-center rounded-md px-4 py-2.5 font-bold text-dr-text transition-colors duration-300 hover:opacity-80 border";
+    "flex items-center justify-center rounded-xl px-4 py-2.5 font-semibold transition-colors duration-200 hover:opacity-90 border";
 
   let variantClasses = "";
-  if (primary) variantClasses = "border-blue-500 bg-[rgba(15,57,83,0.44)]";
+  if (primary) variantClasses = "border-dr-accent bg-dr-accent text-white";
   else if (secondary)
-    variantClasses = "border-dr-text bg-dr-text/30 backdrop-blur";
-  else if (danger) variantClasses = "border-red-500 bg-[rgba(83,15,15,0.44)]";
+    variantClasses =
+      "border-dr-border bg-dr-surface text-dr-text hover:bg-dr-surface-light";
+  else if (danger) variantClasses = "border-dr-danger bg-dr-danger text-white";
   else if (warning)
-    variantClasses = "border-yellow-400 bg-[rgba(83,76,15,0.44)]";
+    variantClasses = "border-dr-warning bg-dr-warning text-dr-text";
   else if (success)
-    variantClasses = "border-dr-success bg-[rgba(15,83,67,0.44)]";
-  else variantClasses = "border-blue-500 bg-[rgba(15,57,83,0.44)]";
+    variantClasses = "border-dr-success bg-dr-success text-white";
+  else variantClasses = "border-dr-accent bg-dr-accent text-white";
 
   className = `${baseClasses} ${variantClasses} ${className}`.trim();
 

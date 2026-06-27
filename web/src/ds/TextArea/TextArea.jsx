@@ -81,23 +81,23 @@ export const TextArea = ({
 
   // Build className based on color props
   const variantClass = secondary
-    ? "border-dr-text"
+    ? "border-dr-border"
     : danger
       ? "border-dr-danger"
       : warning
         ? "border-dr-warning"
         : success
           ? "border-dr-success"
-          : "border-dr-accent";
+          : "border-dr-border";
 
   const shineClass = shineOnFocus
     ? danger
-      ? "focus:shadow-[0_0_5px_#ff4d62,-5px_0_20px_#ff4d62,5px_0_20px_#ff4d62]"
-      : "focus:shadow-[0_0_5px_#794ef5,-5px_0_20px_#794ef5,5px_0_20px_#794ef5]"
+      ? "focus:border-dr-danger focus:ring-2 focus:ring-dr-danger/25"
+      : "focus:border-dr-accent focus:ring-2 focus:ring-dr-accent/25"
     : "focus:shadow-none";
 
   const finalClassName =
-    `w-full resize-none overflow-hidden rounded-[0.8rem] border bg-dr-surface px-4 py-2 pb-4 text-dr-text outline-none transition-[height] duration-100 placeholder:text-dr-text/40 ${variantClass} ${shineClass} ${className}`.trim();
+    `w-full resize-none overflow-hidden rounded-xl border bg-dr-surface px-4 py-3 pb-4 text-dr-text outline-none transition-colors placeholder:text-dr-text-muted ${variantClass} ${shineClass} ${className}`.trim();
 
   // Get current character count
   const currentValue = rest.value || rest.defaultValue || "";

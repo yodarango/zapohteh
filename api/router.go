@@ -19,6 +19,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, LearnAbout)
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, GetTopic)
+	mux.HandleFunc(constants.ROUTE_GET_COURSES, GetCourses)
 
 	// auth routes (no authentication required)
 	mux.HandleFunc(constants.ROUTE_POST_CHANGE_PASSWORD, models.Authenticate(ChangePassword))
@@ -153,6 +154,28 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		name = research.Topic
 	}
 	sendEvent("done", map[string]string{"topic": name})
+}
+
+/************************************************************************
+* Lists every researched topic stored in the data directory so the
+* frontend can render a courses landing page.
+*********************************************************************/
+func GetCourses(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	courses, err := models.ListCourses()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = courses
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
 }
 
 /************************************************************************

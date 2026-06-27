@@ -17,6 +17,8 @@ type Research struct {
 	Topic    string   `json:"input"`
 	Level    string   `json:"level"`
 	Chapters []string `json:"chapters"`
+	// SearchWeb enables web search during chapter elaboration when true.
+	SearchWeb bool `json:"searchWeb"`
 
 	// OnChapters is called once the chapter list has been generated.
 	OnChapters func([]string) `json:"-"`
@@ -33,6 +35,40 @@ const (
 
 const chaptersFileName = "chapters.md"
 const donePrefix = "✅ "
+const dataDir = "data"
+
+// Course represents a single researched topic stored in the data directory. ID is
+// the raw folder name (used in the learn route) and Name is its Title Case version.
+type Course struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+/**************************************************************************************
+* ListCourses reads the data directory and returns every researched topic as a
+* Course, deriving a human readable Title Case name from each folder name. Files
+* (such as the database) are ignored, only directories are listed.
+**************************************************************************************/
+func ListCourses() ([]Course, error) {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Course{}, nil
+		}
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	courses := make([]Course, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		courses = append(courses, Course{ID: name, Name: utils.ToTitleCase(name)})
+	}
+
+	return courses, nil
+}
 
 /**************************************************************************************
 * Run executes the full research pipeline: it generates the chapters from the topic,
@@ -264,15 +300,22 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 		)
 	}
 
-	systemDescription := `You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively. 
+	systemDescription := `You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively.
 	The user will give you the description of the topic they are interrested in, as well as the depth of your dscription. Please respect their depth description and do not provide more or less details than needed.
 	Cite your sources and make sure to use reliable and scholarly ones.
-	The user may give you a list of chapters that they already have the description for so you know what they are missing. 
+	The user may give you a list of chapters that they already have the description for so you know what they are missing.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
 	`
 
-
-	description, err := lib.NewOpenAIService().Ask(systemDescription, prompt)
+	// only swap to the web-search enabled model when the user opted in
+	service := lib.NewOpenAIService()
+	var description string
+	var err error
+	if r.SearchWeb {
+		description, err = service.AskWithWebSearch(systemDescription, prompt)
+	} else {
+		description, err = service.Ask(systemDescription, prompt)
+	}
 	if err != nil {
 		return err
 	}

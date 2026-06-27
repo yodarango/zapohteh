@@ -1,7 +1,7 @@
 import { useAppContext } from "../../views/context/appContextProvider";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Header } from "./Header/Header";
-import { Footer } from "./Footer/Footer";
+import { Sidebar } from "./Sidebar/Sidebar";
+import { Topbar } from "./Topbar/Topbar";
 import { ROUTE_AUTH_VERIFY, ROUTE_HOME, ROUTE_AUTH } from "@constants";
 
 import { useEffect } from "react";
@@ -45,12 +45,16 @@ export const MainLayout = () => {
   ]);
 
   return (
-    <div className='flex min-h-screen flex-col'>
-      <Header />
-      <main className='mx-auto w-[92%] max-w-[60rem] flex-1 px-4 py-4 md:px-8'>
-        <Outlet />
-      </main>
-      <Footer />
+    <div className='min-h-screen bg-dr-bg p-3 md:p-6'>
+      <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[80rem] overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm md:min-h-[calc(100vh-3rem)]'>
+        <Sidebar />
+        <div className='flex min-w-0 flex-1 flex-col'>
+          <Topbar />
+          <main className='flex-1 overflow-y-auto px-5 py-6 md:px-8'>
+            <Outlet />
+          </main>
+        </div>
+      </div>
     </div>
   );
 };

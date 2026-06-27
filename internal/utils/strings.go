@@ -42,6 +42,24 @@ func ToCamelCase(s string) string {
 }
 
 /**************************************************************************************
+* ToTitleCase converts a string into Title Case, capitalizing the first letter of
+* every whitespace separated word and lowering the rest (e.g. "the crusades" ->
+* "The Crusades").
+****************************************************************************************/
+func ToTitleCase(s string) string {
+	words := strings.Fields(s)
+	for i, word := range words {
+		runes := []rune(word)
+		runes[0] = unicode.ToUpper(runes[0])
+		for j := 1; j < len(runes); j++ {
+			runes[j] = unicode.ToLower(runes[j])
+		}
+		words[i] = string(runes)
+	}
+	return strings.Join(words, " ")
+}
+
+/**************************************************************************************
 * SanitizeFilename strips characters that are unsafe for file and folder names,
 * keeping letters, numbers, spaces, dashes and underscores. The result is trimmed
 * and capped to a reasonable length.

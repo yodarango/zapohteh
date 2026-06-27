@@ -1,16 +1,18 @@
 @import "tailwindcss";
-/* 
+
 @theme {
-  --color-dr-bg: #130e21;
-  --color-dr-surface: #231645;
-  --color-dr-surface-light: #443564;
-  --color-dr-text: #f1eaff;
-  --color-dr-text-muted: #898eba;
-  --color-dr-accent: #794ef5;
-  --color-dr-accent-light: #b293fe;
-  --color-dr-danger: #ff4d62;
-  --color-dr-warning: #ffc107;
-  --color-dr-success: #00ffc3;
+  /* Light dashboard palette */
+  --color-dr-bg: #f4f2fb;
+  --color-dr-surface: #ffffff;
+  --color-dr-surface-light: #f6f7fb;
+  --color-dr-text: #1d2333;
+  --color-dr-text-muted: #8a8fa3;
+  --color-dr-border: #ececf3;
+  --color-dr-accent: #2f6bff;
+  --color-dr-accent-light: #e7eeff;
+  --color-dr-danger: #ef4d62;
+  --color-dr-warning: #f5b400;
+  --color-dr-success: #16c098;
   --color-dr-info: #00cfff;
 
   --animate-heart: heartAnimation 1s ease-in-out infinite;
@@ -41,7 +43,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -50,7 +52,7 @@ body {
 
 #root {
   @apply min-h-screen;
-} */
+}
 
 /* Styling for rendered markdown research content. Tailwind preflight resets
    headings and lists, so the base typography is restored here. */
@@ -85,18 +87,18 @@ body {
 }
 
 .research-content a {
-  color: #794ef5;
+  color: #2f6bff;
   text-decoration: underline;
 }
 
 .research-content code {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.06);
   padding: 0.1rem 0.3rem;
   border-radius: 0.25rem;
 }
 
 .research-content blockquote {
-  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  border-left: 3px solid rgba(15, 23, 42, 0.15);
   padding-left: 1rem;
   margin: 0.75rem 0;
   opacity: 0.85;

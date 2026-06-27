@@ -16,6 +16,7 @@ const ROUTE_GET_PUBLIC_SAMPLE = ROUTE_API_BASE + "/public-sample"
 // learn about
 const ROUTE_POST_LEARN_ABOUT = ROUTE_API_BASE + "/learn-about"
 const ROUTE_GET_TOPIC = ROUTE_API_BASE + "/topic"
+const ROUTE_GET_COURSES = ROUTE_API_BASE + "/courses"
 
 // context must have a predefined custom context key type
 type contextKey string
