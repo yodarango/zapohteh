@@ -20,6 +20,13 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, LearnAbout)
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, GetTopic)
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, GetCourses)
+	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, ChapterImage)
+
+	// serve generated research data (e.g. chapter images) from the data directory
+	mux.Handle(
+		constants.ROUTE_DATA_FILES,
+		http.StripPrefix(constants.ROUTE_DATA_FILES, http.FileServer(http.Dir("data"))),
+	)
 
 	// auth routes (no authentication required)
 	mux.HandleFunc(constants.ROUTE_POST_CHANGE_PASSWORD, models.Authenticate(ChangePassword))
@@ -205,6 +212,64 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 
 	httpResponse.Data = map[string]interface{}{
 		"topic":   name,
+		"content": content,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Generates a summarizing image for a single chapter of a topic and
+* returns the freshly assembled markdown content (which now references
+* the new image) so the reader can see it.
+*********************************************************************/
+func ChapterImage(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	var requestBody struct {
+		Topic   string `json:"topic"`
+		Chapter string `json:"chapter"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Topic) == "" || strings.TrimSpace(requestBody.Chapter) == "" {
+		httpResponse.Error = "topic and chapter are required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	research := models.Research{Title: requestBody.Topic}
+	err = research.GenerateChapterImage(requestBody.Chapter)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	content, err := research.ReadContent()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":   requestBody.Topic,
 		"content": content,
 	}
 	httpResponse.Success = true

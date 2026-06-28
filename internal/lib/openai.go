@@ -2,6 +2,7 @@ package lib
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,8 +11,10 @@ import (
 )
 
 const openAIChatURL = "https://api.openai.com/v1/chat/completions"
+const openAIImageURL = "https://api.openai.com/v1/images/generations"
 const openAIModel = "gpt-4o-mini"
 const openAIModelSearch = "gpt-4o-mini-search-preview"
+const openAIImageModel = "gpt-image-2"
 
 type OpenAIService struct {
 	APIKey string
@@ -132,4 +135,88 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
+}
+
+type imageRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	Size   string `json:"size"`
+	N      int    `json:"n"`
+}
+
+type imageResponse struct {
+	Data []struct {
+		B64JSON string `json:"b64_json"`
+	} `json:"data"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+/**************************************************************************************
+* GenerateImage asks the OpenAI image model to create an image from the given system
+* and user prompts (concatenated into a single prompt) and returns the raw decoded
+* image bytes (PNG).
+**************************************************************************************/
+func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, error) {
+	if s.APIKey == "" {
+		return nil, fmt.Errorf("OpenAI API key is not configured")
+	}
+
+	prompt := userPrompt
+	if systemPrompt != "" {
+		prompt = systemPrompt + "\n\n" + userPrompt
+	}
+
+	reqBody := imageRequest{
+		Model:  openAIImageModel,
+		Prompt: prompt,
+		Size:   "1024x1024",
+		N:      1,
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal OpenAI image request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, openAIImageURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OpenAI image request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send OpenAI image request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read OpenAI image response: %w", err)
+	}
+
+	var imgResp imageResponse
+	err = json.Unmarshal(body, &imgResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal OpenAI image response: %w", err)
+	}
+
+	if imgResp.Error != nil {
+		return nil, fmt.Errorf("OpenAI image error: %s", imgResp.Error.Message)
+	}
+
+	if len(imgResp.Data) == 0 {
+		return nil, fmt.Errorf("OpenAI returned no image data")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode OpenAI image data: %w", err)
+	}
+
+	return decoded, nil
 }

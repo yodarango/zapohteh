@@ -103,3 +103,11 @@ body {
   margin: 0.75rem 0;
   opacity: 0.85;
 }
+
+.research-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 1rem 0;
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"goilerplate/internal/lib"
 	"goilerplate/internal/utils"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,11 @@ const (
 const chaptersFileName = "chapters.md"
 const donePrefix = "✅ "
 const dataDir = "data"
+const imagesDirName = "images"
+
+// imageSystemPrompt explains to the image model what kind of summarizing image is
+// expected. The per-request user prompt only carries the chapter content.
+const imageSystemPrompt = `You are an image generation assistant that creates a single image summarizing a chapter of study material. The image is a memorization aid that captures the main points at a glance, for example as a chart, timeline, list of events, people, dates or concepts. Favour clear labels and a clean educational infographic style. Do not invent facts that are not in the chapter.`
 
 // Course represents a single researched topic stored in the data directory. ID is
 // the raw folder name (used in the learn route) and Name is its Title Case version.
@@ -369,4 +375,131 @@ func (r *Research) ReadContent() (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+/**************************************************************************************
+* GenerateChapterImage creates a summarizing image for a single chapter using the
+* image model, fed with the chapter's content. The image is written to the images
+* folder of the topic with a numeric prefix reflecting generation order, and an image
+* reference is inserted into the chapter file right below its title.
+**************************************************************************************/
+func (r *Research) GenerateChapterImage(chapter string) error {
+	folder := r.folderPath()
+	chapterFile := filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
+
+	content, err := os.ReadFile(chapterFile)
+	if err != nil {
+		return fmt.Errorf("chapter not found: %w", err)
+	}
+
+	// ask the image model for a summarizing image of this chapter
+	userPrompt := "Please create a summarizing image for the following chapter:\n\n" + string(content)
+	imageBytes, err := lib.NewOpenAIService().GenerateImage(imageSystemPrompt, userPrompt)
+	if err != nil {
+		return err
+	}
+
+	imagesDir := filepath.Join(folder, imagesDirName)
+	err = os.MkdirAll(imagesDir, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create images folder: %w", err)
+	}
+
+	prefix := nextImagePrefix(imagesDir)
+	fileName := fmt.Sprintf("%d-%s.png", prefix, utils.ToSlug(chapter))
+	err = os.WriteFile(filepath.Join(imagesDir, fileName), imageBytes, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write image file: %w", err)
+	}
+
+	// reference the image with a web-absolute path so the frontend resolves it
+	// against the /data static route regardless of the current page URL. Each path
+	// segment is URL-encoded so spaces in the folder name don't break the markdown
+	// image syntax (a space inside an image URL would otherwise terminate the link).
+	imageRef := "/" + encodePathSegments(filepath.ToSlash(filepath.Join(folder, imagesDirName, fileName)))
+	return insertImageReference(chapterFile, chapter, imageRef)
+}
+
+/**************************************************************************************
+* encodePathSegments URL-encodes each segment of a slash-separated path while keeping
+* the slashes intact, so the resulting value is safe to use inside a markdown image
+* URL even when folder names contain spaces or other special characters.
+**************************************************************************************/
+func encodePathSegments(p string) string {
+	parts := strings.Split(p, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
+}
+
+/**************************************************************************************
+* nextImagePrefix returns the next numeric prefix to use for an image file in the
+* given images directory, based on the highest existing prefix. Numbering starts at 1.
+**************************************************************************************/
+func nextImagePrefix(imagesDir string) int {
+	entries, err := os.ReadDir(imagesDir)
+	if err != nil {
+		return 1
+	}
+
+	highest := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		dash := strings.Index(name, "-")
+		if dash <= 0 {
+			continue
+		}
+		var n int
+		_, err := fmt.Sscanf(name[:dash], "%d", &n)
+		if err == nil && n > highest {
+			highest = n
+		}
+	}
+
+	return highest + 1
+}
+
+/**************************************************************************************
+* insertImageReference rewrites a chapter file so that a markdown image reference is
+* placed right below the chapter title. When the chapter file already starts with a
+* heading it is inserted after it, otherwise a heading is prepended. This does not use
+* any AI, it only edits the file in place.
+**************************************************************************************/
+func insertImageReference(chapterFile, chapter, imageRef string) error {
+	content, err := os.ReadFile(chapterFile)
+	if err != nil {
+		return fmt.Errorf("failed to read chapter file: %w", err)
+	}
+
+	imageLine := fmt.Sprintf("![%s](%s)", chapter, imageRef)
+	lines := strings.Split(string(content), "\n")
+
+	// find the first non-empty line to decide whether it is already a heading
+	titleIndex := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			titleIndex = i
+			break
+		}
+	}
+
+	var out []string
+	if titleIndex >= 0 && strings.HasPrefix(strings.TrimSpace(lines[titleIndex]), "#") {
+		out = append(out, lines[:titleIndex+1]...)
+		out = append(out, "", imageLine)
+		out = append(out, lines[titleIndex+1:]...)
+	} else {
+		out = append([]string{imageLine, ""}, lines...)
+	}
+
+	err = os.WriteFile(chapterFile, []byte(strings.Join(out, "\n")), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to update chapter file: %w", err)
+	}
+
+	return nil
 }

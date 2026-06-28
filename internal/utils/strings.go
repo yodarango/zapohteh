@@ -42,6 +42,20 @@ func ToCamelCase(s string) string {
 }
 
 /**************************************************************************************
+* ToSlug converts an arbitrary string into a lowercase, dash separated slug suitable
+* for file names (e.g. "The Story of Anna" -> "the-story-of-anna").
+****************************************************************************************/
+func ToSlug(s string) string {
+	words := strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	for i, word := range words {
+		words[i] = strings.ToLower(word)
+	}
+	return strings.Join(words, "-")
+}
+
+/**************************************************************************************
 * ToTitleCase converts a string into Title Case, capitalizing the first letter of
 * every whitespace separated word and lowering the rest (e.g. "the crusades" ->
 * "The Crusades").
