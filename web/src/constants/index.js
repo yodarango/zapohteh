@@ -20,6 +20,14 @@ export const API_POST_LEARN_ABOUT = API_BASE + "/learn-about";
 export const API_GET_TOPIC = API_BASE + "/topic";
 export const API_GET_COURSES = API_BASE + "/courses";
 export const API_POST_CHAPTER_IMAGE = API_BASE + "/chapter-image";
+export const API_GET_READING_PROGRESS = API_BASE + "/reading-progress";
+export const API_POST_READING_PROGRESS = API_BASE + "/reading-progress";
+export const API_GET_SUBJECTS = API_BASE + "/subjects";
+export const API_POST_SUBJECTS = API_BASE + "/subjects";
+export const API_GET_COURSE_SUBJECTS = API_BASE + "/course-subjects";
+export const API_POST_COURSE_SUBJECTS = API_BASE + "/course-subjects";
+
+export const ROUTE_SUBJECTS = "/subjects";
 
 // user statuses
 export const USER_STATUS_PENDING = "pending";

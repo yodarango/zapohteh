@@ -18,6 +18,12 @@ const ROUTE_POST_LEARN_ABOUT = ROUTE_API_BASE + "/learn-about"
 const ROUTE_GET_TOPIC = ROUTE_API_BASE + "/topic"
 const ROUTE_GET_COURSES = ROUTE_API_BASE + "/courses"
 const ROUTE_POST_CHAPTER_IMAGE = ROUTE_API_BASE + "/chapter-image"
+const ROUTE_GET_READING_PROGRESS = ROUTE_API_BASE + "/reading-progress"
+const ROUTE_POST_READING_PROGRESS = ROUTE_API_BASE + "/reading-progress"
+const ROUTE_GET_SUBJECTS = ROUTE_API_BASE + "/subjects"
+const ROUTE_POST_SUBJECTS = ROUTE_API_BASE + "/subjects"
+const ROUTE_GET_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
+const ROUTE_POST_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 
 // static files for generated research data (images, etc.)
 const ROUTE_DATA_FILES = "/data/"

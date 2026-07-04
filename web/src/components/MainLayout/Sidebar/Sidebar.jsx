@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { ROUTE_HOME, ROUTE_COURSES } from "@constants";
+import { ROUTE_HOME, ROUTE_COURSES, ROUTE_SUBJECTS } from "@constants";
 import { useAppContext } from "../../../views/context/appContextProvider";
 import goilerplateLogo from "../../../../public/logo.png";
 
@@ -7,6 +7,7 @@ import goilerplateLogo from "../../../../public/logo.png";
 const GENERAL = [
   { label: "Dashboard", icon: "grid-outline", to: ROUTE_HOME },
   { label: "Courses", icon: "book-outline", to: ROUTE_COURSES },
+  { label: "Subjects", icon: "pricetag-outline", to: ROUTE_SUBJECTS },
 ];
 
 const NavItem = ({ item }) => {

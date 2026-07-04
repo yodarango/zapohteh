@@ -25,6 +25,9 @@ type Research struct {
 	OnChapters func([]string) `json:"-"`
 	// OnChapterDone is called every time a chapter has been described.
 	OnChapterDone func(string) `json:"-"`
+	// OnCoverImage is called when the cover image generation phase updates.
+	// The phase string is one of: "description", "image", "done".
+	OnCoverImage func(phase string, data string) `json:"-"`
 }
 
 // research depth levels
@@ -43,17 +46,48 @@ const imagesDirName = "images"
 // expected. The per-request user prompt only carries the chapter content.
 const imageSystemPrompt = `You are an image generation assistant that creates a single image summarizing a chapter of study material. The image is a memorization aid that captures the main points at a glance, for example as a chart, timeline, list of events, people, dates or concepts. Favour clear labels and a clean educational infographic style. Do not invent facts that are not in the chapter.`
 
+// coverImageDescriptionPrompt asks the completions model to craft a prompt for an
+// image generation model that will be used as the cover image for the course.
+const coverImageDescriptionPrompt = `You are an assistant that helps create cover images for educational blog posts. A researcher is investigating a topic and has enrolled in a course with several chapters. Your job is to write a single, detailed description that can be sent directly to an image generation model to create a 1024x1024 cover image for the blog post. The description should capture the theme of the topic and the breadth of the chapters without inventing facts. Return only the description, no commentary.`
+
+// coverImageSystemPrompt explains to the image model what kind of cover image is expected.
+const coverImageSystemPrompt = `You are an image generation assistant that creates a single, eye-catching cover image for an educational blog post. The image should be visually engaging, thematically relevant, and suitable as a 1024x1024 blog post cover. Favour a clean, professional style without small text or labels.`
+
 // Course represents a single researched topic stored in the data directory. ID is
 // the raw folder name (used in the learn route) and Name is its Title Case version.
 type Course struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	CoverImagePath string    `json:"coverImagePath"`
+	TotalChapters  int       `json:"totalChapters"`
+	ReadChapters   int       `json:"readChapters"`
+	Subjects       []Subject `json:"subjects"`
+}
+
+/**************************************************************************************
+* GetCoverImagePath returns the stored cover image path for a research title, or an
+* empty string when none has been generated yet.
+**************************************************************************************/
+func GetCoverImagePath(title string) string {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return ""
+	}
+	var path string
+	err := ModelsRepo.DB.Conn.QueryRow(
+		"SELECT cover_image_path FROM research WHERE title = ?",
+		title,
+	).Scan(&path)
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 /**************************************************************************************
 * ListCourses reads the data directory and returns every researched topic as a
 * Course, deriving a human readable Title Case name from each folder name. Files
-* (such as the database) are ignored, only directories are listed.
+* (such as the database) are ignored, only directories are listed. Each course is also
+* enriched with its cover image path from the research table when available.
 **************************************************************************************/
 func ListCourses() ([]Course, error) {
 	entries, err := os.ReadDir(dataDir)
@@ -64,13 +98,57 @@ func ListCourses() ([]Course, error) {
 		return nil, fmt.Errorf("failed to read data directory: %w", err)
 	}
 
+	coverPaths := make(map[string]string)
+	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
+		rows, err := ModelsRepo.DB.Conn.Query("SELECT title, cover_image_path FROM research WHERE cover_image_path != ''")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var title, path string
+				if err := rows.Scan(&title, &path); err == nil {
+					coverPaths[utils.SanitizeFilename(title)] = path
+				}
+			}
+		}
+	}
+
+	readCounts := make(map[string]int)
+	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
+		rows, err := ModelsRepo.DB.Conn.Query(
+			"SELECT course_title, COUNT(*) FROM reading_progress WHERE read = 1 GROUP BY course_title",
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var title string
+				var count int
+				if err := rows.Scan(&title, &count); err == nil {
+					readCounts[utils.SanitizeFilename(title)] = count
+				}
+			}
+		}
+	}
+
+	subjectMap, err := SubjectColorMap()
+	if err != nil {
+		subjectMap = make(map[string][]Subject)
+	}
+
 	courses := make([]Course, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		name := entry.Name()
-		courses = append(courses, Course{ID: name, Name: utils.ToTitleCase(name)})
+		total := countChapters(filepath.Join(dataDir, name))
+		courses = append(courses, Course{
+			ID:             name,
+			Name:           utils.ToTitleCase(name),
+			CoverImagePath: coverPaths[name],
+			TotalChapters:  total,
+			ReadChapters:   readCounts[name],
+			Subjects:       subjectMap[name],
+		})
 	}
 
 	return courses, nil
@@ -105,6 +183,10 @@ func (r *Research) Run() error {
 		return err
 	}
 
+	if err := r.GenerateCoverImage(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -115,16 +197,16 @@ func (r *Research) Run() error {
 func (r *Research) GenerateChapters() error {
 	system := fmt.Sprintf(`
 	You are a scholarly research assistant machine that helps structure the analysis of any topic by systematizing its analysis into chapters.
-	The user will give you a description of the topic they want to research according to the level of depth specified by them. 
+	The user will give you a description of the topic they want to research according to the level of depth specified by them.
 	Your job is to provide a set of chapters to divide the topic into and facilitate its analysis.
 	Return ONLY a comma separated list of chapter titles without any other text, numbering or formatting.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the chapters.
 	`)
 
 	user := fmt.Sprintf(
-		`Topic Description: 
+		`Topic Description:
 		%s
-		Research Depth Level: 
+		Research Depth Level:
 		%s`,
 		r.Topic, levelDescription(r.Level),
 	)
@@ -283,32 +365,52 @@ func (r *Research) ElaborateChapters() error {
 * described chapters are provided to the model as context.
 **************************************************************************************/
 func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []string) error {
+	var previousContent string
+	if len(done) > 0 {
+		prevFile := filepath.Join(folder, utils.ToCamelCase(done[len(done)-1])+".md")
+		if data, err := os.ReadFile(prevFile); err == nil {
+			previousContent = string(data)
+		}
+	}
+
 	var prompt string
 	if len(done) == 0 {
 		prompt = fmt.Sprintf(
-			`Research Topic Description: 
-			%s 
+			`Research Topic Description:
+			%s
 			Research chapters:
 			 %s
-			Chpater I want you to describe: 
+			Chapter I want you to describe:
 			%s.
 			Describe nothing else`,
 			r.Topic, strings.Join(allChapters, ", "), chapter,
 		)
+	} else if previousContent != "" {
+		prompt = fmt.Sprintf(
+			`Research Topic Description:
+			%s.
+			Research chapters:
+			%s.
+			Previous chapter "%s" content:
+			%s.
+			Now describe chapter "%s" and nothing else. Write the new chapter so it flows naturally from the previous chapter without repeating it.`,
+			r.Topic, strings.Join(allChapters, ", "), done[len(done)-1], previousContent, chapter,
+		)
 	} else {
 		prompt = fmt.Sprintf(
 			`Research Topic Description:
-			%s. 
+			%s.
 			I already have the text for the following chapters:
 			%s.
-			Now describe chapter %s and nothing else.`,
+			Now describe chapter "%s" and nothing else.`,
 			r.Topic, strings.Join(done, ", "), chapter,
 		)
 	}
 
 	systemDescription := `You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively.
-	The user will give you the description of the topic they are interrested in, as well as the depth of your dscription. Please respect their depth description and do not provide more or less details than needed.
+	The user will give you the description of the topic they are interested in, as well as the depth of your description. Please respect their depth description and do not provide more or less details than needed.
 	Cite your sources and make sure to use reliable and scholarly ones.
+	When the user provides the content of the previous chapter, write the current chapter so it flows naturally from it. Do not repeat the previous chapter content; build upon it so the reader feels a continuous narrative.
 	The user may give you a list of chapters that they already have the description for so you know what they are missing.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
 	`
@@ -418,6 +520,193 @@ func (r *Research) GenerateChapterImage(chapter string) error {
 	// image syntax (a space inside an image URL would otherwise terminate the link).
 	imageRef := "/" + encodePathSegments(filepath.ToSlash(filepath.Join(folder, imagesDirName, fileName)))
 	return insertImageReference(chapterFile, chapter, imageRef)
+}
+
+/**************************************************************************************
+* GenerateCoverImage asks the completions model to craft a description for a cover
+* image, saves that description to the database, then asks the image model to create
+* the 1024x1024 cover image. The generated image is stored in the topic folder and its
+* path is saved to the database.
+**************************************************************************************/
+func (r *Research) GenerateCoverImage() error {
+	if len(r.Chapters) == 0 {
+		return nil
+	}
+
+	folder := r.folderPath()
+	title := utils.SanitizeFilename(r.Title)
+	if strings.TrimSpace(title) == "" {
+		title = utils.SanitizeFilename(r.Topic)
+	}
+
+	// notify the UI that we are crafting the cover image description
+	if r.OnCoverImage != nil {
+		r.OnCoverImage("description", "")
+	}
+
+	description, err := r.generateCoverImageDescription(title)
+	if err != nil {
+		return err
+	}
+
+	if err := r.SaveCoverImageDescription(title, description); err != nil {
+		return fmt.Errorf("failed to save cover image description: %w", err)
+	}
+
+	if r.OnCoverImage != nil {
+		r.OnCoverImage("description", description)
+	}
+
+	if r.OnCoverImage != nil {
+		r.OnCoverImage("image", "")
+	}
+
+	imageBytes, err := lib.NewOpenAIService().GenerateImage(coverImageSystemPrompt, description)
+	if err != nil {
+		return err
+	}
+
+	imagesDir := filepath.Join(folder, imagesDirName)
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create images folder: %w", err)
+	}
+
+	fileName := "cover.png"
+	imagePath := filepath.Join(imagesDir, fileName)
+	if err := os.WriteFile(imagePath, imageBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write cover image file: %w", err)
+	}
+
+	webPath := "/" + encodePathSegments(filepath.ToSlash(imagePath))
+	if err := r.SaveCoverImagePath(title, webPath); err != nil {
+		return fmt.Errorf("failed to save cover image path: %w", err)
+	}
+
+	if r.OnCoverImage != nil {
+		r.OnCoverImage("done", webPath)
+	}
+
+	return nil
+}
+
+/**************************************************************************************
+* generateCoverImageDescription asks the completions model to craft a prompt suitable
+* for an image generation model, given the course title and chapter list.
+**************************************************************************************/
+func (r *Research) generateCoverImageDescription(title string) (string, error) {
+	userPrompt := fmt.Sprintf(
+		`The user is a researcher that is investigating the following topic: %s.
+The following are the chapters of a course he has enrolled in: %s.
+Based on this, create a description that can be sent to an image generation model to create the cover image for a blog post in dimensions 1024 x 1024.`,
+		title, strings.Join(r.Chapters, ", "),
+	)
+
+	service := lib.NewOpenAIService()
+	description, err := service.Ask(coverImageDescriptionPrompt, userPrompt)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate cover image description: %w", err)
+	}
+
+	return strings.TrimSpace(description), nil
+}
+
+/**************************************************************************************
+* SaveCoverImageDescription stores the generated cover image description in the
+* research table, creating the row if it does not already exist.
+**************************************************************************************/
+func (r *Research) SaveCoverImageDescription(title, description string) error {
+	query := `
+		INSERT INTO research (title, cover_image_description)
+		VALUES (?, ?)
+		ON CONFLICT(title) DO UPDATE SET
+			cover_image_description = excluded.cover_image_description,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := ModelsRepo.DB.Conn.Exec(query, title, description)
+	return err
+}
+
+/**************************************************************************************
+* SaveCoverImagePath stores the generated cover image path in the research table,
+* creating the row if it does not already exist.
+**************************************************************************************/
+func (r *Research) SaveCoverImagePath(title, path string) error {
+	query := `
+		INSERT INTO research (title, cover_image_path)
+		VALUES (?, ?)
+		ON CONFLICT(title) DO UPDATE SET
+			cover_image_path = excluded.cover_image_path,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := ModelsRepo.DB.Conn.Exec(query, title, path)
+	return err
+}
+
+/**************************************************************************************
+* GetReadChapters returns the titles of chapters that have been marked as read for a
+* given course.
+**************************************************************************************/
+func GetReadChapters(courseTitle string) ([]string, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return []string{}, nil
+	}
+	rows, err := ModelsRepo.DB.Conn.Query(
+		"SELECT chapter FROM reading_progress WHERE course_title = ? AND read = 1",
+		courseTitle,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	chapters := []string{}
+	for rows.Next() {
+		var chapter string
+		if err := rows.Scan(&chapter); err != nil {
+			return nil, err
+		}
+		chapters = append(chapters, chapter)
+	}
+	return chapters, nil
+}
+
+/**************************************************************************************
+* SaveReadingProgress marks a chapter as read or unread for a given course.
+**************************************************************************************/
+func SaveReadingProgress(courseTitle, chapter string, read bool) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	query := `
+		INSERT INTO reading_progress (course_title, chapter, read)
+		VALUES (?, ?, ?)
+		ON CONFLICT(course_title, chapter) DO UPDATE SET
+			read = excluded.read,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	readFlag := 0
+	if read {
+		readFlag = 1
+	}
+	_, err := ModelsRepo.DB.Conn.Exec(query, courseTitle, chapter, readFlag)
+	return err
+}
+
+/**************************************************************************************
+* countChapters reads the chapters file for a course and returns the number of chapters.
+**************************************************************************************/
+func countChapters(folder string) int {
+	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 /**************************************************************************************

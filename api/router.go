@@ -21,6 +21,9 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, GetTopic)
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, GetCourses)
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, ChapterImage)
+	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, ReadingProgressHandler)
+	mux.HandleFunc(constants.ROUTE_GET_SUBJECTS, SubjectsHandler)
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_SUBJECTS, CourseSubjectsHandler)
 
 	// serve generated research data (e.g. chapter images) from the data directory
 	mux.Handle(
@@ -148,6 +151,9 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 	research.OnChapterDone = func(chapter string) {
 		sendEvent("chapterDone", chapter)
 	}
+	research.OnCoverImage = func(phase string, data string) {
+		sendEvent("coverImage", map[string]string{"phase": phase, "data": data})
+	}
 
 	err = research.Run()
 	if err != nil {
@@ -177,6 +183,17 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 		httpResponse.Data = nil
 		httpResponse.Send(w)
 		return
+	}
+
+	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
+	if search != "" {
+		filtered := make([]models.Course, 0, len(courses))
+		for _, c := range courses {
+			if strings.Contains(strings.ToLower(c.Name), search) {
+				filtered = append(filtered, c)
+			}
+		}
+		courses = filtered
 	}
 
 	httpResponse.Data = courses
@@ -211,8 +228,9 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpResponse.Data = map[string]interface{}{
-		"topic":   name,
-		"content": content,
+		"topic":          name,
+		"content":        content,
+		"coverImagePath": models.GetCoverImagePath(name),
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
@@ -275,6 +293,251 @@ func ChapterImage(w http.ResponseWriter, r *http.Request) {
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns the list of chapters that have been marked as read for a course.
+*********************************************************************/
+func GetReadingProgress(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	course := r.URL.Query().Get("course")
+	if strings.TrimSpace(course) == "" {
+		httpResponse.Error = "course is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	chapters, err := models.GetReadChapters(course)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = chapters
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Marks a chapter as read or unread for a course.
+*********************************************************************/
+func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	var requestBody struct {
+		Course  string `json:"course"`
+		Chapter string `json:"chapter"`
+		Read    bool   `json:"read"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Course) == "" || strings.TrimSpace(requestBody.Chapter) == "" {
+		httpResponse.Error = "course and chapter are required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	err = models.SaveReadingProgress(requestBody.Course, requestBody.Chapter, requestBody.Read)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]bool{"read": requestBody.Read}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* ReadingProgressHandler dispatches GET and POST requests for the reading
+* progress endpoint.
+*********************************************************************/
+func ReadingProgressHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		GetReadingProgress(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		PostReadingProgress(w, r)
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+/************************************************************************
+* Lists all subjects.
+*********************************************************************/
+func GetSubjects(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	subjects, err := models.ListSubjects()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = subjects
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Creates a new subject.
+*********************************************************************/
+func PostSubjects(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	var subject models.Subject
+	err := json.NewDecoder(r.Body).Decode(&subject)
+	if err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	err = subject.Create()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Subject created"}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns the subjects attached to a course.
+*********************************************************************/
+func GetCourseSubjects(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	course := r.URL.Query().Get("course")
+	if strings.TrimSpace(course) == "" {
+		httpResponse.Error = "course is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	subjects, err := models.GetCourseSubjects(course)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = subjects
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Sets the subjects attached to a course.
+*********************************************************************/
+func PostCourseSubjects(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	var requestBody struct {
+		Course     string `json:"course"`
+		SubjectIDs []int  `json:"subjectIds"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Course) == "" {
+		httpResponse.Error = "course is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	err = models.SetCourseSubjects(requestBody.Course, requestBody.SubjectIDs)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Course subjects updated"}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* SubjectsHandler dispatches GET and POST requests for the subjects endpoint.
+*********************************************************************/
+func SubjectsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		GetSubjects(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		PostSubjects(w, r)
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+/************************************************************************
+* CourseSubjectsHandler dispatches GET and POST requests for the course
+* subjects endpoint.
+*********************************************************************/
+func CourseSubjectsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		GetCourseSubjects(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		PostCourseSubjects(w, r)
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 }
 
 /************************************************************************

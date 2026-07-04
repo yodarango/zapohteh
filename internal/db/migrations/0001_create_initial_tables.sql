@@ -1,8 +1,5 @@
--- Drop tables if they exist (for clean reinstall)
-DROP TABLE IF EXISTS users;
-
 -- Users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,

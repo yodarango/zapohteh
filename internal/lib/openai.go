@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 )
 
 const openAIChatURL = "https://api.openai.com/v1/chat/completions"
@@ -138,10 +140,11 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 }
 
 type imageRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Size   string `json:"size"`
-	N      int    `json:"n"`
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	Size           string `json:"size"`
+	N              int    `json:"n"`
+	ResponseFormat string `json:"response_format"`
 }
 
 type imageResponse struct {
@@ -156,7 +159,7 @@ type imageResponse struct {
 /**************************************************************************************
 * GenerateImage asks the OpenAI image model to create an image from the given system
 * and user prompts (concatenated into a single prompt) and returns the raw decoded
-* image bytes (PNG).
+* image bytes (PNG). Transient network errors are retried with exponential backoff.
 **************************************************************************************/
 func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, error) {
 	if s.APIKey == "" {
@@ -169,10 +172,11 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 	}
 
 	reqBody := imageRequest{
-		Model:  openAIImageModel,
-		Prompt: prompt,
-		Size:   "1024x1024",
-		N:      1,
+		Model:          openAIImageModel,
+		Prompt:         prompt,
+		Size:           "1024x1024",
+		N:              1,
+		ResponseFormat: "b64_json",
 	}
 
 	payload, err := json.Marshal(reqBody)
@@ -180,43 +184,92 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 		return nil, fmt.Errorf("failed to marshal OpenAI image request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, openAIImageURL, bytes.NewBuffer(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OpenAI image request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.APIKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send OpenAI image request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read OpenAI image response: %w", err)
+	client := &http.Client{
+		Timeout: 120 * time.Second,
 	}
 
-	var imgResp imageResponse
-	err = json.Unmarshal(body, &imgResp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal OpenAI image response: %w", err)
+	maxRetries := 3
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(1<<attempt) * time.Second
+			time.Sleep(backoff)
+		}
+
+		req, err := http.NewRequest(http.MethodPost, openAIImageURL, bytes.NewBuffer(payload))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OpenAI image request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+s.APIKey)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to send OpenAI image request: %w", err)
+			if isTransientError(err) {
+				continue
+			}
+			return nil, lastErr
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read OpenAI image response: %w", err)
+			if isTransientError(err) {
+				continue
+			}
+			return nil, lastErr
+		}
+
+		var imgResp imageResponse
+		err = json.Unmarshal(body, &imgResp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal OpenAI image response: %w", err)
+		}
+
+		if imgResp.Error != nil {
+			return nil, fmt.Errorf("OpenAI image error: %s", imgResp.Error.Message)
+		}
+
+		if len(imgResp.Data) == 0 {
+			return nil, fmt.Errorf("OpenAI returned no image data")
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode OpenAI image data: %w", err)
+		}
+
+		return decoded, nil
 	}
 
-	if imgResp.Error != nil {
-		return nil, fmt.Errorf("OpenAI image error: %s", imgResp.Error.Message)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("OpenAI image request failed after %d attempts", maxRetries)
 	}
+	return nil, lastErr
+}
 
-	if len(imgResp.Data) == 0 {
-		return nil, fmt.Errorf("OpenAI returned no image data")
+/**************************************************************************************
+* isTransientError reports whether an error is likely temporary and worth retrying.
+**************************************************************************************/
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
 	}
-
-	decoded, err := base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode OpenAI image data: %w", err)
+	msg := err.Error()
+	transientPhrases := []string{
+		"unexpected EOF",
+		"connection reset",
+		"broken pipe",
+		"timeout",
+		"temporary",
+		"EOF",
 	}
-
-	return decoded, nil
+	for _, phrase := range transientPhrases {
+		if strings.Contains(msg, phrase) {
+			return true
+		}
+	}
+	return false
 }

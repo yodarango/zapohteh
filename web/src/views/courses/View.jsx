@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Loading } from "@ds";
+import { Loading, Input, Thumbnail } from "@ds";
 import { API_GET_COURSES, ROUTE_LEARN } from "@constants";
 import { useGet } from "@utils";
 
@@ -20,7 +21,19 @@ const TINTS = [
  * *************************************************************************************************
  */
 export const CoursesView = () => {
-  const { data, loading, error } = useGet({ url: API_GET_COURSES });
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 1000);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const searchUrl = debouncedQuery
+    ? `${API_GET_COURSES}?search=${encodeURIComponent(debouncedQuery)}`
+    : API_GET_COURSES;
+
+  const { data, loading, error } = useGet({ url: searchUrl });
   const courses = data || [];
 
   return (
@@ -29,6 +42,14 @@ export const CoursesView = () => {
       <p className='mb-6 text-sm text-dr-text-muted'>
         Every topic you have researched so far.
       </p>
+
+      <div className='mb-6'>
+        <Input
+          placeholder='Search courses by title...'
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
 
       {loading && (
         <div className='flex justify-center py-20'>
@@ -54,13 +75,21 @@ export const CoursesView = () => {
               to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}
               className='group flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'
             >
-              <div
-                className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
-                  TINTS[index % TINTS.length]
-                }`}
-              >
-                <ion-icon name='book-outline'></ion-icon>
-              </div>
+              {course.coverImagePath ? (
+                <Thumbnail
+                  src={course.coverImagePath}
+                  alt={course.name}
+                  className='h-28 w-full rounded-xl'
+                />
+              ) : (
+                <div
+                  className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
+                    TINTS[index % TINTS.length]
+                  }`}
+                >
+                  <ion-icon name='book-outline'></ion-icon>
+                </div>
+              )}
               <div className='flex items-center justify-between gap-2'>
                 <span className='font-semibold text-dr-text line-clamp-2'>
                   {course.name}
@@ -70,6 +99,49 @@ export const CoursesView = () => {
                   className='shrink-0 text-dr-text-muted transition-colors group-hover:text-dr-accent'
                 ></ion-icon>
               </div>
+
+              {course.totalChapters > 0 && (
+                <div className='mt-2'>
+                  {course.readChapters === course.totalChapters ? (
+                    <div className='flex items-center gap-1.5 text-sm text-dr-success'>
+                      <ion-icon name='checkmark-circle'></ion-icon>
+                      <span className='font-medium'>Read</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className='mb-1 flex items-center justify-between text-xs text-dr-text-muted'>
+                        <span>Progress</span>
+                        <span>
+                          {course.readChapters} of {course.totalChapters}
+                        </span>
+                      </div>
+                      <div className='h-1.5 w-full overflow-hidden rounded-full bg-dr-border'>
+                        <div
+                          className='h-full rounded-full bg-dr-accent'
+                          style={{
+                            width: `${Math.round(
+                              (course.readChapters / course.totalChapters) * 100,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {course.subjects && course.subjects.length > 0 && (
+                <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+                  {course.subjects.map((subject) => (
+                    <span
+                      key={subject.id}
+                      title={subject.name}
+                      className='inline-block h-2.5 w-2.5 rounded-full'
+                      style={{ backgroundColor: subject.color }}
+                    />
+                  ))}
+                </div>
+              )}
             </Link>
           ))}
         </div>

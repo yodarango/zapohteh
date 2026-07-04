@@ -14,7 +14,8 @@ export default defineConfig(({ mode }) => {
   try {
     backendOrigin = new URL(apiBase).origin;
   } catch {
-    backendOrigin = "";
+    // If VITE_API_BASE is a root-relative path, default to the local Go backend.
+    backendOrigin = "http://localhost:8014";
   }
 
   return {
@@ -35,6 +36,11 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: backendOrigin
         ? {
+            // Proxy API requests to the Go backend during development.
+            "/api": {
+              target: backendOrigin,
+              changeOrigin: true,
+            },
             // Proxy generated research assets (chapter images) to the Go backend
             // so root-relative /data URLs resolve during development.
             "/data": {

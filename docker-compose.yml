@@ -3,7 +3,7 @@ services:
     build: .
     container_name: ${COMPOSE_PROJECT_NAME}
     ports:
-      - "8008:8008"
+      - "8014:8014"
     environment:
       - DB_PATH=${DB_PATH:-/app/data/app.db}
       - STATIC_PATH=web/dist

@@ -47,6 +47,11 @@ func DBConnection() (*sql.DB, error) {
 		return nil, fmt.Errorf("unable to ping db: \n %w", err)
 	}
 
+	// Apply any pending migrations so the schema is up to date.
+	if err := RunMigrations(db); err != nil {
+		return nil, fmt.Errorf("unable to run migrations: \n %w", err)
+	}
+
 	return db, nil
 
 }
