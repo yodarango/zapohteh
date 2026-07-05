@@ -140,16 +140,17 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 }
 
 type imageRequest struct {
-	Model          string `json:"model"`
-	Prompt         string `json:"prompt"`
-	Size           string `json:"size"`
-	N              int    `json:"n"`
-	ResponseFormat string `json:"response_format"`
+	Model       string `json:"model"`
+	Prompt      string `json:"prompt"`
+	Size        string `json:"size"`
+	N           int    `json:"n"`
+	OutputFormat string `json:"output_format"`
 }
 
 type imageResponse struct {
 	Data []struct {
 		B64JSON string `json:"b64_json"`
+		URL     string `json:"url"`
 	} `json:"data"`
 	Error *struct {
 		Message string `json:"message"`
@@ -172,11 +173,11 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 	}
 
 	reqBody := imageRequest{
-		Model:          openAIImageModel,
-		Prompt:         prompt,
-		Size:           "1024x1024",
-		N:              1,
-		ResponseFormat: "b64_json",
+		Model:        openAIImageModel,
+		Prompt:       prompt,
+		Size:         "1024x1024",
+		N:            1,
+		OutputFormat: "png",
 	}
 
 	payload, err := json.Marshal(reqBody)
@@ -236,12 +237,37 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 			return nil, fmt.Errorf("OpenAI returned no image data")
 		}
 
-		decoded, err := base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode OpenAI image data: %w", err)
+		// The unified image API may return either a base64 payload or a temporary URL.
+		if imgResp.Data[0].B64JSON != "" {
+			decoded, err := base64.StdEncoding.DecodeString(imgResp.Data[0].B64JSON)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode OpenAI image data: %w", err)
+			}
+			return decoded, nil
 		}
 
-		return decoded, nil
+		if imgResp.Data[0].URL != "" {
+			imageResp, err := client.Get(imgResp.Data[0].URL)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to download OpenAI image: %w", err)
+				if isTransientError(err) {
+					continue
+				}
+				return nil, lastErr
+			}
+			defer imageResp.Body.Close()
+			imageBytes, err := io.ReadAll(imageResp.Body)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to read downloaded OpenAI image: %w", err)
+				if isTransientError(err) {
+					continue
+				}
+				return nil, lastErr
+			}
+			return imageBytes, nil
+		}
+
+		return nil, fmt.Errorf("OpenAI returned no image data")
 	}
 
 	if lastErr == nil {

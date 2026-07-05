@@ -127,6 +127,11 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(research.SubjectIDs) == 0 {
+		http.Error(w, "at least one subject is required", http.StatusBadRequest)
+		return
+	}
+
 	// configure the response as a Server-Sent Events stream
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -166,6 +171,13 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(name) == "" {
 		name = research.Topic
 	}
+
+	// attach the selected subjects to the newly created course
+	if err := models.SetCourseSubjects(name, research.SubjectIDs); err != nil {
+		sendEvent("error", fmt.Sprintf("%v", err))
+		return
+	}
+
 	sendEvent("done", map[string]string{"topic": name})
 }
 

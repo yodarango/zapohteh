@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -20,6 +21,8 @@ type Research struct {
 	Chapters []string `json:"chapters"`
 	// SearchWeb enables web search during chapter elaboration when true.
 	SearchWeb bool `json:"searchWeb"`
+	// SubjectIDs are the subjects to attach to the created course.
+	SubjectIDs []int `json:"subjectIds"`
 
 	// OnChapters is called once the chapter list has been generated.
 	OnChapters func([]string) `json:"-"`
@@ -479,6 +482,25 @@ func (r *Research) ReadContent() (string, error) {
 	return b.String(), nil
 }
 
+// markdownLinkPattern matches markdown links [text](url).
+var markdownLinkPattern = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+
+// sanitizeImagePrompt strips markdown links and truncates chapter text so it fits
+// within the image model's prompt limits. URLs in markdown links are removed, leaving
+// only the link text, which keeps the prompt clean and avoids API connection issues.
+func sanitizeImagePrompt(text string, maxLen int) string {
+	// remove markdown links, keeping only the link text
+	text = markdownLinkPattern.ReplaceAllString(text, "$1")
+	// collapse multiple spaces/newlines
+	text = strings.Join(strings.Fields(text), " ")
+	// truncate by runes so we never split a multi-byte character
+	runes := []rune(text)
+	if len(runes) > maxLen {
+		runes = runes[:maxLen]
+	}
+	return strings.TrimSpace(string(runes))
+}
+
 /**************************************************************************************
 * GenerateChapterImage creates a summarizing image for a single chapter using the
 * image model, fed with the chapter's content. The image is written to the images
@@ -494,8 +516,12 @@ func (r *Research) GenerateChapterImage(chapter string) error {
 		return fmt.Errorf("chapter not found: %w", err)
 	}
 
-	// ask the image model for a summarizing image of this chapter
-	userPrompt := "Please create a summarizing image for the following chapter:\n\n" + string(content)
+	// ask the image model for a summarizing image of this chapter. The image model
+	// prompt has a length limit, so keep the chapter content to a reasonable size and
+	// strip markdown links so the prompt does not include URLs.
+	const maxImagePromptLength = 2000
+	chapterText := sanitizeImagePrompt(string(content), maxImagePromptLength)
+	userPrompt := "Please create a summarizing image for the following chapter:\n\n" + chapterText
 	imageBytes, err := lib.NewOpenAIService().GenerateImage(imageSystemPrompt, userPrompt)
 	if err != nil {
 		return err

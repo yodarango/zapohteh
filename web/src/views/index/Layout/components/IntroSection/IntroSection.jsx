@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Loading, Switch, TextArea } from "@ds";
-import { API_POST_LEARN_ABOUT, ROUTE_LEARN } from "@constants";
-import { streamPost } from "@utils";
+import {
+  API_POST_LEARN_ABOUT,
+  API_GET_SUBJECTS,
+  ROUTE_LEARN,
+} from "@constants";
+import { streamPost, useGet } from "@utils";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
@@ -30,10 +34,30 @@ export const IntroSection = () => {
   const [topic, setTopic] = useState("");
   const [finished, setFinished] = useState(false);
   const [currentStep, setCurrentStep] = useState(null);
+  const [selectedSubjects, setSelectedSubjects] = useState(new Set());
+
+  const {
+    data: subjects,
+    loading: subjectsLoading,
+    error: subjectsError,
+  } = useGet({ url: API_GET_SUBJECTS });
+
+  const toggleSubject = (id) => {
+    setSelectedSubjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !input.trim() || loading) return;
+    if (selectedSubjects.size === 0) {
+      setError("Please select at least one subject");
+      return;
+    }
 
     // reset progress state before starting a new research
     setLoading(true);
@@ -47,7 +71,13 @@ export const IntroSection = () => {
     try {
       await streamPost({
         url: API_POST_LEARN_ABOUT,
-        body: { title: title.trim(), input: input.trim(), level, searchWeb },
+        body: {
+          title: title.trim(),
+          input: input.trim(),
+          level,
+          searchWeb,
+          subjectIds: Array.from(selectedSubjects),
+        },
         onEvent: (event, data) => {
           const parsed = JSON.parse(data);
           if (event === "chapters") {
@@ -129,6 +159,68 @@ export const IntroSection = () => {
                 onChange={setSearchWeb}
                 disabled={loading}
               />
+            </div>
+            {/* Subject selector */}
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm font-medium text-dr-text'>
+                Subjects{selectedSubjects.size === 0 && (
+                  <span className='ml-1 text-dr-danger'>*</span>
+                )}
+              </span>
+              {subjectsLoading ? (
+                <Loading size={18} />
+              ) : subjectsError ? (
+                <p className='text-xs text-dr-danger'>
+                  Failed to load subjects
+                </p>
+              ) : subjects?.length === 0 ? (
+                <p className='text-xs text-dr-text-muted'>
+                  No subjects yet. Create some in the subjects page.
+                </p>
+              ) : (
+                <div className='flex flex-wrap items-center gap-3'>
+                  {subjects?.map((subject) => {
+                    const selected = selectedSubjects.has(subject.id);
+                    return (
+                      <button
+                        key={subject.id}
+                        type='button'
+                        onClick={() => toggleSubject(subject.id)}
+                        disabled={loading}
+                        className={`group flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                          selected
+                            ? ""
+                            : "border-dr-border bg-dr-surface hover:border-dr-text-muted"
+                        }`}
+                        style={
+                          selected
+                            ? {
+                                backgroundColor: subject.color,
+                                borderColor: subject.color,
+                                color: "#fff",
+                              }
+                            : {}
+                        }
+                        title={subject.name}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full border-2 transition-colors ${
+                            selected
+                              ? "border-white bg-white"
+                              : "border-current bg-transparent"
+                          }`}
+                          style={
+                            selected
+                              ? {}
+                              : { borderColor: subject.color }
+                          }
+                        />
+                        {subject.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
           {loading ? (
