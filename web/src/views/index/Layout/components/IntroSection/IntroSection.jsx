@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Loading, Switch, TextArea } from "@ds";
 import {
@@ -7,6 +7,7 @@ import {
   ROUTE_LEARN,
 } from "@constants";
 import { streamPost, useGet } from "@utils";
+import { useAppContext } from "@views/context/appContextProvider";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
@@ -23,12 +24,12 @@ const STEPS = [
 
 export const IntroSection = () => {
   const navigate = useNavigate();
+  const { showToast } = useAppContext();
   const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
   const [searchWeb, setSearchWeb] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [completed, setCompleted] = useState([]);
   const [topic, setTopic] = useState("");
@@ -42,6 +43,15 @@ export const IntroSection = () => {
     error: subjectsError,
   } = useGet({ url: API_GET_SUBJECTS });
 
+  useEffect(() => {
+    if (subjectsError) {
+      showToast({
+        type: "danger",
+        message: String(subjectsError),
+      });
+    }
+  }, [subjectsError, showToast]);
+
   const toggleSubject = (id) => {
     setSelectedSubjects((prev) => {
       const next = new Set(prev);
@@ -53,15 +63,23 @@ export const IntroSection = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !input.trim() || loading) return;
+    if (!title.trim() || !input.trim() || loading) {
+      showToast({
+        type: "danger",
+        message: "Please enter a title and a topic",
+      });
+      return;
+    }
     if (selectedSubjects.size === 0) {
-      setError("Please select at least one subject");
+      showToast({
+        type: "danger",
+        message: "Please select at least one subject",
+      });
       return;
     }
 
     // reset progress state before starting a new research
     setLoading(true);
-    setError(null);
     setChapters([]);
     setCompleted([]);
     setFinished(false);
@@ -91,11 +109,23 @@ export const IntroSection = () => {
             setTopic(parsed.topic);
             setFinished(true);
             setCurrentStep(3);
-          } else if (event === "error") setError(parsed);
+            showToast({
+              type: "success",
+              message: "Course created successfully",
+            });
+          } else if (event === "error") {
+            showToast({
+              type: "danger",
+              message: typeof parsed === "string" ? parsed : parsed?.message || "Research failed",
+            });
+          }
         },
       });
     } catch (err) {
-      setError(err.message || "Something went wrong");
+      showToast({
+        type: "danger",
+        message: err.message || "Something went wrong",
+      });
     } finally {
       setLoading(false);
     }
@@ -170,9 +200,7 @@ export const IntroSection = () => {
               {subjectsLoading ? (
                 <Loading size={18} />
               ) : subjectsError ? (
-                <p className='text-xs text-dr-danger'>
-                  Failed to load subjects
-                </p>
+                <p className='text-xs text-dr-text-muted'>Failed to load subjects</p>
               ) : subjects?.length === 0 ? (
                 <p className='text-xs text-dr-text-muted'>
                   No subjects yet. Create some in the subjects page.
@@ -237,10 +265,6 @@ export const IntroSection = () => {
             </Button>
           )}
         </form>
-
-        {error && (
-          <p className='mt-4 text-sm text-dr-danger'>{String(error)}</p>
-        )}
 
         {/* Timeline of the research pipeline */}
         {currentStep !== null && (

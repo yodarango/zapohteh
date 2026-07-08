@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Input, TextArea, Loading } from "@ds";
 import {
   API_GET_SUBJECTS,
   API_POST_SUBJECTS,
 } from "@constants";
 import { useGet } from "@utils";
-import { useAppContext } from "../context/appContextProvider";
+import { useAppContext } from "@views/context/appContextProvider";
 
 export const SubjectsView = () => {
   const { showToast } = useAppContext();
@@ -17,9 +17,24 @@ export const SubjectsView = () => {
   const { data, loading, error, refetch } = useGet({ url: API_GET_SUBJECTS });
   const subjects = data || [];
 
+  useEffect(() => {
+    if (error) {
+      showToast({
+        type: "danger",
+        message: String(error),
+      });
+    }
+  }, [error, showToast]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !color.trim() || creating) return;
+    if (!name.trim() || !color.trim() || creating) {
+      showToast({
+        type: "danger",
+        message: "Please enter a name and a color",
+      });
+      return;
+    }
 
     setCreating(true);
     try {
@@ -112,10 +127,6 @@ export const SubjectsView = () => {
         <div className='flex justify-center py-12'>
           <Loading size={40} />
         </div>
-      )}
-
-      {error && (
-        <p className='py-12 text-center text-dr-danger'>{String(error)}</p>
       )}
 
       {!loading && !error && subjects.length === 0 && (

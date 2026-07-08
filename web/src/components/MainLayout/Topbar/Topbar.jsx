@@ -2,7 +2,7 @@
 // mirroring the reference design.
 export const Topbar = () => {
   return (
-    <header className='flex items-center justify-end gap-4 border-b border-dr-border px-6 py-4'>
+    <header className='flex items-center justify-end gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
       <button
         type='button'
         className='flex items-center gap-2 text-sm font-medium text-dr-text-muted transition-colors hover:text-dr-text'

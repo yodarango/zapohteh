@@ -56,7 +56,7 @@ export const Sidebar = () => {
     [user.first_name, user.last_name].filter(Boolean).join(" ") || "Guest";
 
   return (
-    <aside className='flex w-60 shrink-0 flex-col border-r border-dr-border'>
+    <aside className='flex w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm'>
       {/* Brand */}
       <div className='flex items-center gap-2 px-5 py-5'>
         <img

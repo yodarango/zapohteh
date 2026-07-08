@@ -1,8 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Loading, Input, Thumbnail } from "@ds";
-import { API_GET_COURSES, ROUTE_LEARN } from "@constants";
+import { API_GET_COURSES, API_GET_SUBJECTS, ROUTE_LEARN } from "@constants";
 import { useGet } from "@utils";
+import { useAppContext } from "@views/context/appContextProvider";
+
+const MONTHS = [
+  { value: 1, label: "Jan" },
+  { value: 2, label: "Feb" },
+  { value: 3, label: "Mar" },
+  { value: 4, label: "Apr" },
+  { value: 5, label: "May" },
+  { value: 6, label: "Jun" },
+  { value: 7, label: "Jul" },
+  { value: 8, label: "Aug" },
+  { value: 9, label: "Sep" },
+  { value: 10, label: "Oct" },
+  { value: 11, label: "Nov" },
+  { value: 12, label: "Dec" },
+];
 
 // Soft background tints rotated across the course cards to echo the reference
 // design's colorful thumbnails.
@@ -21,20 +37,83 @@ const TINTS = [
  * *************************************************************************************************
  */
 export const CoursesView = () => {
+  const { showToast } = useAppContext();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [selectedSubjects, setSelectedSubjects] = useState(new Set());
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedYears, setSelectedYears] = useState(new Set());
+  const [selectedMonths, setSelectedMonths] = useState(new Set());
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 1000);
     return () => clearTimeout(timer);
   }, [query]);
 
-  const searchUrl = debouncedQuery
-    ? `${API_GET_COURSES}?search=${encodeURIComponent(debouncedQuery)}`
+  const { data: subjectsData } = useGet({ url: API_GET_SUBJECTS });
+  const subjects = subjectsData || [];
+
+  const params = useMemo(() => {
+    const p = new URLSearchParams();
+    if (debouncedQuery) p.set("search", debouncedQuery);
+    if (selectedSubjects.size > 0)
+      p.set("subjects", Array.from(selectedSubjects).join(","));
+    if (selectedStatus) p.set("status", selectedStatus);
+    if (selectedYears.size > 0)
+      p.set("year", Array.from(selectedYears).join(","));
+    if (selectedMonths.size > 0)
+      p.set("month", Array.from(selectedMonths).join(","));
+    return p;
+  }, [debouncedQuery, selectedSubjects, selectedStatus, selectedYears, selectedMonths]);
+
+  const searchUrl = params.toString()
+    ? `${API_GET_COURSES}?${params.toString()}`
     : API_GET_COURSES;
 
   const { data, loading, error } = useGet({ url: searchUrl });
   const courses = data || [];
+
+  useEffect(() => {
+    if (error) {
+      showToast({ type: "danger", message: String(error) });
+    }
+  }, [error, showToast]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    courses.forEach((c) => {
+      const d = c.createdAt ? new Date(c.createdAt) : null;
+      if (d && !isNaN(d)) years.add(d.getFullYear());
+    });
+    return Array.from(years).sort((a, b) => a - b);
+  }, [courses]);
+
+  const toggleInSet = (set, setFn, value) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    setFn(next);
+  };
+
+  const toggleStatus = (value) => {
+    setSelectedStatus((prev) => (prev === value ? "" : value));
+  };
+
+  const hasFilters =
+    debouncedQuery ||
+    selectedSubjects.size > 0 ||
+    selectedStatus ||
+    selectedYears.size > 0 ||
+    selectedMonths.size > 0;
+
+  const clearFilters = () => {
+    setQuery("");
+    setDebouncedQuery("");
+    setSelectedSubjects(new Set());
+    setSelectedStatus("");
+    setSelectedYears(new Set());
+    setSelectedMonths(new Set());
+  };
 
   return (
     <section>
@@ -43,12 +122,105 @@ export const CoursesView = () => {
         Every topic you have researched so far.
       </p>
 
-      <div className='mb-6'>
+      <div className='mb-4'>
         <Input
           placeholder='Search courses by title...'
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+      </div>
+
+      <div className='mb-6 flex flex-wrap items-center gap-2'>
+        {subjects.map((subject) => {
+          const selected = selectedSubjects.has(subject.id);
+          return (
+            <button
+              key={subject.id}
+              type='button'
+              onClick={() => toggleInSet(selectedSubjects, setSelectedSubjects, subject.id)}
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                selected
+                  ? ""
+                  : "border-dr-border bg-dr-surface text-dr-text hover:border-dr-text-muted"
+              }`}
+              style={
+                selected
+                  ? {
+                      backgroundColor: subject.color,
+                      borderColor: subject.color,
+                      color: "#fff",
+                    }
+                  : {}
+              }
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 rounded-full border-2 ${
+                  selected ? "border-white bg-white" : "bg-transparent"
+                }`}
+                style={selected ? {} : { borderColor: subject.color }}
+              />
+              {subject.name}
+            </button>
+          );
+        })}
+
+        {["complete", "incomplete"].map((status) => {
+          const selected = selectedStatus === status;
+          return (
+            <button
+              key={status}
+              type='button'
+              onClick={() => toggleStatus(status)}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium capitalize transition-all ${
+                selected
+                  ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                  : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
+              }`}
+            >
+              {status}
+            </button>
+          );
+        })}
+
+        {availableYears.map((year) => (
+          <button
+            key={year}
+            type='button'
+            onClick={() => toggleInSet(selectedYears, setSelectedYears, year)}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+              selectedYears.has(year)
+                ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
+            }`}
+          >
+            {year}
+          </button>
+        ))}
+
+        {MONTHS.map((month) => (
+          <button
+            key={month.value}
+            type='button'
+            onClick={() => toggleInSet(selectedMonths, setSelectedMonths, month.value)}
+            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+              selectedMonths.has(month.value)
+                ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
+            }`}
+          >
+            {month.label}
+          </button>
+        ))}
+
+        {hasFilters && (
+          <button
+            type='button'
+            onClick={clearFilters}
+            className='rounded-full border border-dr-border px-3 py-1.5 text-sm font-medium text-dr-text-muted transition-all hover:border-dr-danger hover:text-dr-danger'
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {loading && (
@@ -57,17 +229,13 @@ export const CoursesView = () => {
         </div>
       )}
 
-      {error && (
-        <p className='py-20 text-center text-dr-danger'>{String(error)}</p>
-      )}
-
-      {!loading && !error && courses.length === 0 && (
+      {!loading && courses.length === 0 && (
         <p className='py-20 text-center text-dr-text-muted'>
           No courses yet. Research a topic to get started.
         </p>
       )}
 
-      {!loading && !error && courses.length > 0 && (
+      {!loading && courses.length > 0 && (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {courses.map((course, index) => (
             <Link

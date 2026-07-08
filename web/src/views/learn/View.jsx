@@ -13,7 +13,7 @@ import {
   ROUTE_HOME,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
-import { useAppContext } from "../../views/context/appContextProvider";
+import { useAppContext } from "@views/context/appContextProvider";
 
 // turns a chapter title into a DOM id that can be used as an anchor target
 const chapterSlug = (title) =>
@@ -36,7 +36,6 @@ export const LearnView = () => {
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
   // titles of chapters that have been marked as read
@@ -49,7 +48,6 @@ export const LearnView = () => {
     const controller = new AbortController();
     (async () => {
       setLoading(true);
-      setError(null);
       try {
         const [topicRes, progressRes, subjectsRes, courseSubjectsRes] =
           await Promise.all([
@@ -71,8 +69,12 @@ export const LearnView = () => {
         const subjectsResult = await subjectsRes.json();
         const courseSubjectsResult = await courseSubjectsRes.json();
 
-        if (topicResult.error) setError(topicResult.error);
-        else {
+        if (topicResult.error) {
+          showToast({
+            type: "danger",
+            message: String(topicResult.error),
+          });
+        } else {
           setContent(topicResult.data?.content || "");
           setCoverImagePath(topicResult.data?.coverImagePath || "");
         }
@@ -92,7 +94,10 @@ export const LearnView = () => {
         }
       } catch (err) {
         if (err.name !== "AbortError")
-          setError(err.message || "Something went wrong");
+          showToast({
+            type: "danger",
+            message: err.message || "Something went wrong",
+          });
       } finally {
         setLoading(false);
       }
@@ -102,7 +107,6 @@ export const LearnView = () => {
 
   const createImage = async (chapter) => {
     setGenerating((prev) => new Set(prev).add(chapter));
-    setError(null);
     try {
       const res = await fetch(API_POST_CHAPTER_IMAGE, {
         method: "POST",
@@ -112,7 +116,6 @@ export const LearnView = () => {
       const result = await res.json();
       if (result.errors || !result.success) {
         const message = result.errors || "Failed to create summary image";
-        setError(message);
         showToast({
           type: "danger",
           message: String(message),
@@ -127,7 +130,6 @@ export const LearnView = () => {
       }
     } catch (err) {
       const message = err.message || "Something went wrong";
-      setError(message);
       showToast({
         type: "danger",
         message: message,
@@ -149,10 +151,6 @@ export const LearnView = () => {
     );
   }
 
-  if (error) {
-    return <p className='py-20 text-center text-dr-danger'>{String(error)}</p>;
-  }
-
   const { intro, chapters } = splitChapters(content);
 
   const toggleRead = async (chapter) => {
@@ -168,6 +166,10 @@ export const LearnView = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ course: topic, chapter, read: nextRead }),
+      });
+      showToast({
+        type: "success",
+        message: nextRead ? "Marked as read" : "Marked as unread",
       });
     } catch (err) {
       showToast({
@@ -213,6 +215,10 @@ export const LearnView = () => {
           subjectIds: Array.from(nextIds),
         }),
       });
+      showToast({
+        type: "success",
+        message: "Subjects updated",
+      });
     } catch (err) {
       showToast({
         type: "danger",
@@ -230,8 +236,8 @@ export const LearnView = () => {
   };
 
   return (
-    <div className='flex items-start gap-8'>
-      <div className='min-w-0 flex-1 max-w-[800px] px-4 py-8'>
+    <div className='flex h-full gap-8'>
+      <div className='min-w-0 flex-1 max-w-[800px] overflow-y-auto px-4 py-8'>
         <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
           <ion-icon name='arrow-back-outline'></ion-icon>
           <span className='ml-2'>Back</span>
@@ -327,7 +333,7 @@ export const LearnView = () => {
         })}
       </div>
 
-      <div className='sticky top-6 mt-8 hidden w-64 shrink-0 lg:block'>
+      <div className='hidden h-full w-64 shrink-0 overflow-y-auto lg:block'>
         {chapters.length > 0 && (
           <div className='rounded-2xl border border-dr-border bg-dr-surface p-4'>
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
@@ -354,28 +360,47 @@ export const LearnView = () => {
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
               Subjects
             </h3>
-            <ul className='flex flex-col gap-2'>
+            <div className='flex flex-wrap items-center gap-2'>
               {subjects.map((subject) => {
-                const checked = courseSubjectIds.has(subject.id);
+                const selected = courseSubjectIds.has(subject.id);
                 return (
-                  <li key={subject.id}>
-                    <label className='flex cursor-pointer items-center gap-2 text-sm text-dr-text'>
-                      <input
-                        type='checkbox'
-                        checked={checked}
-                        onChange={() => toggleSubject(subject.id)}
-                        className='h-4 w-4 rounded border-dr-border accent-dr-accent'
-                      />
-                      <span
-                        className='inline-block h-2.5 w-2.5 rounded-full'
-                        style={{ backgroundColor: subject.color }}
-                      />
-                      <span className='line-clamp-1'>{subject.name}</span>
-                    </label>
-                  </li>
+                  <button
+                    key={subject.id}
+                    type='button'
+                    onClick={() => toggleSubject(subject.id)}
+                    className={`group flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                      selected
+                        ? ""
+                        : "border-dr-border bg-dr-surface hover:border-dr-text-muted"
+                    }`}
+                    style={
+                      selected
+                        ? {
+                            backgroundColor: subject.color,
+                            borderColor: subject.color,
+                            color: "#fff",
+                          }
+                        : {}
+                    }
+                    title={subject.name}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full border-2 transition-colors ${
+                        selected
+                          ? "border-white bg-white"
+                          : "border-current bg-transparent"
+                      }`}
+                      style={
+                        selected
+                          ? {}
+                          : { borderColor: subject.color }
+                      }
+                    />
+                    <span className='line-clamp-1'>{subject.name}</span>
+                  </button>
                 );
               })}
-            </ul>
+            </div>
           </div>
         )}
       </div>

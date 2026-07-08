@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import { If } from "@ds";
 
 const typeStyles = {
-  success: "border-dr-success bg-[#132d30]",
-  danger: "border-red-500 bg-[#301313]",
-  warning: "border-yellow-400 bg-[#302d13]",
-  info: "border-blue-500 bg-[#131e30]",
-  default: "border-dr-bg bg-[#131e30]",
+  success: "border-dr-success bg-dr-success/10 text-dr-success",
+  danger: "border-dr-danger bg-dr-danger/10 text-dr-danger",
+  warning: "border-dr-warning bg-dr-warning/10 text-dr-text",
+  info: "border-dr-info bg-dr-info/10 text-dr-info",
+  default: "border-dr-border bg-dr-surface text-dr-text",
 };
 
 export const Toast = (props) => {

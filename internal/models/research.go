@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Research represents a topic research request together with the chapters that
@@ -65,6 +66,7 @@ type Course struct {
 	TotalChapters  int       `json:"totalChapters"`
 	ReadChapters   int       `json:"readChapters"`
 	Subjects       []Subject `json:"subjects"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 /**************************************************************************************
@@ -102,14 +104,17 @@ func ListCourses() ([]Course, error) {
 	}
 
 	coverPaths := make(map[string]string)
+	createdAts := make(map[string]time.Time)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
-		rows, err := ModelsRepo.DB.Conn.Query("SELECT title, cover_image_path FROM research WHERE cover_image_path != ''")
+		rows, err := ModelsRepo.DB.Conn.Query("SELECT title, cover_image_path, created_at FROM research WHERE cover_image_path != ''")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var title, path string
-				if err := rows.Scan(&title, &path); err == nil {
+				var createdAt time.Time
+				if err := rows.Scan(&title, &path, &createdAt); err == nil {
 					coverPaths[utils.SanitizeFilename(title)] = path
+					createdAts[utils.SanitizeFilename(title)] = createdAt
 				}
 			}
 		}
@@ -151,6 +156,7 @@ func ListCourses() ([]Course, error) {
 			TotalChapters:  total,
 			ReadChapters:   readCounts[name],
 			Subjects:       subjectMap[name],
+			CreatedAt:      createdAts[name],
 		})
 	}
 

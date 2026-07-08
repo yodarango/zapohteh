@@ -1,6 +1,6 @@
 import { USER_STATUS_ACTIVE, USER_STATUS_PENDING } from "@constants";
 import { initialAppData, AppContext } from "./appContext";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useState, useCallback } from "react";
 import update from "immutability-helper";
 import { Toast } from "@ds";
 
@@ -81,22 +81,22 @@ export const AppContextProvider = (props) => {
   }
 
   // Show toast with given parameters
-  function showToast(toast) {
+  const showToast = useCallback((toast) => {
     setState((prevState) =>
       update(prevState, {
         toast: { $set: toast },
       })
     );
-  }
+  }, []);
 
   // Hide toast
-  function handleHideToast() {
+  const handleHideToast = useCallback(() => {
     setState((prevState) =>
       update(prevState, {
         toast: { $set: null },
       })
     );
-  }
+  }, []);
 
   useEffect(() => {
     setupAuth();

@@ -46,11 +46,11 @@ export const MainLayout = () => {
 
   return (
     <div className='min-h-screen bg-dr-bg p-3 md:p-6'>
-      <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[80rem] overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm md:min-h-[calc(100vh-3rem)]'>
+      <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[80rem] gap-3 md:gap-4 md:min-h-[calc(100vh-3rem)]'>
         <Sidebar />
-        <div className='flex min-w-0 flex-1 flex-col'>
+        <div className='flex min-w-0 flex-1 flex-col gap-3 md:gap-4'>
           <Topbar />
-          <main className='flex-1 overflow-y-auto px-5 py-6 md:px-8'>
+          <main className='flex-1 overflow-y-auto rounded-3xl border border-dr-border bg-dr-surface px-5 py-6 shadow-sm md:px-8'>
             <Outlet />
           </main>
         </div>

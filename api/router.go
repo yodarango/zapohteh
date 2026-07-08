@@ -8,6 +8,7 @@ import (
 	"goilerplate/internal/utils"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +44,7 @@ func Router () http.Handler {
 	// Serve static files from the frontend build
 	staticPath := os.Getenv("STATIC_PATH")
 	if staticPath == "" {
-		staticPath = "frontend/dist" 
+		staticPath = "frontend/dist"
 	}
 	spa := spaHandler{staticPath: staticPath, indexPath: "index.html"}
 	mux.Handle("/", spa)
@@ -183,7 +184,8 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 
 /************************************************************************
 * Lists every researched topic stored in the data directory so the
-* frontend can render a courses landing page.
+* frontend can render a courses landing page. Supports accumulative
+* filtering by search, subject IDs, completion status, year and month.
 *********************************************************************/
 func GetCourses(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
@@ -197,7 +199,9 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
+	q := r.URL.Query()
+
+	search := strings.ToLower(strings.TrimSpace(q.Get("search")))
 	if search != "" {
 		filtered := make([]models.Course, 0, len(courses))
 		for _, c := range courses {
@@ -206,6 +210,61 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		courses = filtered
+	}
+
+	if rawSubjects := q.Get("subjects"); rawSubjects != "" {
+		wanted := parseIntList(rawSubjects)
+		if len(wanted) > 0 {
+			filtered := make([]models.Course, 0, len(courses))
+			for _, c := range courses {
+				for _, s := range c.Subjects {
+					if containsInt(wanted, s.ID) {
+						filtered = append(filtered, c)
+						break
+					}
+				}
+			}
+			courses = filtered
+		}
+	}
+
+	if status := strings.ToLower(q.Get("status")); status != "" {
+		filtered := make([]models.Course, 0, len(courses))
+		for _, c := range courses {
+			complete := c.TotalChapters > 0 && c.ReadChapters == c.TotalChapters
+			if status == "complete" && complete {
+				filtered = append(filtered, c)
+			} else if status == "incomplete" && !complete {
+				filtered = append(filtered, c)
+			}
+		}
+		courses = filtered
+	}
+
+	if rawYears := q.Get("year"); rawYears != "" {
+		years := parseIntList(rawYears)
+		if len(years) > 0 {
+			filtered := make([]models.Course, 0, len(courses))
+			for _, c := range courses {
+				if containsInt(years, c.CreatedAt.Year()) {
+					filtered = append(filtered, c)
+				}
+			}
+			courses = filtered
+		}
+	}
+
+	if rawMonths := q.Get("month"); rawMonths != "" {
+		months := parseIntList(rawMonths)
+		if len(months) > 0 {
+			filtered := make([]models.Course, 0, len(courses))
+			for _, c := range courses {
+				if containsInt(months, int(c.CreatedAt.Month())) {
+					filtered = append(filtered, c)
+				}
+			}
+			courses = filtered
+		}
 	}
 
 	httpResponse.Data = courses
@@ -635,7 +694,7 @@ func Signup(w http.ResponseWriter, r *http.Request){
 
 /************************************************************************
 * Handles email verification
-* 
+*
 * status: ✅
 ************************************************************************/
 func VerifyEmail(w http.ResponseWriter, r *http.Request){
@@ -687,7 +746,7 @@ func VerifyEmail(w http.ResponseWriter, r *http.Request){
 
 /************************************************************************
 * Handles forgot password functionality by sending a temporary password
-* to the user's email address. The user can then use this temporary 
+* to the user's email address. The user can then use this temporary
 * password to log in and change their password.
 *
 * status: ✅
@@ -796,4 +855,29 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request){
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
+}
+
+
+func parseIntList(s string) []int {
+	parts := strings.Split(s, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(p); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func containsInt(list []int, value int) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
