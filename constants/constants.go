@@ -25,6 +25,10 @@ const ROUTE_POST_SUBJECTS = ROUTE_API_BASE + "/subjects"
 const ROUTE_GET_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 const ROUTE_POST_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 
+// chat
+const ROUTE_GET_CHAT = ROUTE_API_BASE + "/chat"
+const ROUTE_POST_CHAT = ROUTE_API_BASE + "/chat"
+
 // static files for generated research data (images, etc.)
 const ROUTE_DATA_FILES = "/data/"
 

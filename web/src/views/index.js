@@ -4,3 +4,4 @@ export { AuthView } from "./auth/View";
 export { LearnView } from "./learn/View";
 export { CoursesView } from "./courses/View";
 export { SubjectsView } from "./subjects/View";
+export { MeView } from "./users/MeView";

@@ -40,6 +40,10 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_SIGNUP, Signup)
 	mux.HandleFunc(constants.ROUTE_POST_LOGIN, Login)
 
+	// lesson chat routes
+	mux.HandleFunc(constants.ROUTE_GET_CHAT, models.Authenticate(GetChatMessages))
+	mux.HandleFunc(constants.ROUTE_POST_CHAT, models.Authenticate(CreateChatMessage))
+
 
 	// Serve static files from the frontend build
 	staticPath := os.Getenv("STATIC_PATH")
@@ -812,7 +816,7 @@ func ChangePassword(w http.ResponseWriter, r *http.Request){
 }
 
 /************************************************************************
-* Updates user profile (first name and last name)
+* Updates user profile (first name, last name, username, email, avatar)
 * status: ✅
 ************************************************************************/
 func UpdateProfile(w http.ResponseWriter, r *http.Request){
@@ -839,6 +843,23 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
+	// Preserve existing values if not provided in the request
+	if user.FirstName == "" {
+		user.FirstName = authUser.FirstName
+	}
+	if user.LastName == "" {
+		user.LastName = authUser.LastName
+	}
+	if user.Username == "" {
+		user.Username = authUser.Username
+	}
+	if user.Email == "" {
+		user.Email = authUser.Email
+	}
+	if user.Avatar == "" {
+		user.Avatar = authUser.Avatar
+	}
+
 	// Call the Update method from the user model
 	err = user.Update(authUser.Id)
 	if err != nil {
@@ -849,14 +870,129 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-	httpResponse.Data = map[string]string{
-		"message": "Profile updated successfully",
+	// Generate a new token with the updated profile data
+	updatedAuthUser := models.AuthUser{
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Username:  user.Username,
+		Email:     user.Email,
+		Avatar:    user.Avatar,
+		Status:    authUser.Status,
+		Id:        authUser.Id,
+	}
+	token, err := updatedAuthUser.GenerateJWT()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"AuthToken": token,
+		"User":      user,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
 
+
+/************************************************************************
+* Returns all chat messages for a course in chronological order.
+************************************************************************/
+func GetChatMessages(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	course := strings.TrimSpace(r.URL.Query().Get("course"))
+	if course == "" {
+		httpResponse.Error = "course is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	messages, err := models.GetChatMessagesByCourse(authUser.Id, course)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = messages
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Saves a user chat message and returns the AI assistant's response.
+************************************************************************/
+func CreateChatMessage(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var payload struct {
+		Course  string `json:"course"`
+		Chapter string `json:"chapter"`
+		Content string `json:"content"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httpResponse.Error = "Invalid request data"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if payload.Course == "" || payload.Content == "" {
+		httpResponse.Error = "course and content are required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if payload.Chapter == "" {
+		payload.Chapter = "generic"
+	}
+
+	msg, err := models.AskChat(authUser.Id, payload.Course, payload.Chapter, payload.Content)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = msg
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
 
 func parseIntList(s string) []int {
 	parts := strings.Split(s, ",")

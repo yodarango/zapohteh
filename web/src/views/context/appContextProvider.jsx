@@ -57,6 +57,7 @@ export const AppContextProvider = (props) => {
       return {
         first_name: payload.first_name,
         last_name: payload.last_name,
+        username: payload.username,
         avatar: payload.avatar,
         status: payload.status,
         email: payload.email,

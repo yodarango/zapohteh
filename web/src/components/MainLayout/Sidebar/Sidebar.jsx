@@ -1,6 +1,7 @@
-import { NavLink } from "react-router-dom";
-import { ROUTE_HOME, ROUTE_COURSES, ROUTE_SUBJECTS } from "@constants";
-import { useAppContext } from "../../../views/context/appContextProvider";
+import { NavLink, useNavigate } from "react-router-dom";
+import { ROUTE_HOME, ROUTE_COURSES, ROUTE_SUBJECTS, ROUTE_USERS_ME } from "@constants";
+import { useAppContext } from "@views/context/appContextProvider";
+import { avatars } from "@images";
 import goilerplateLogo from "../../../../public/logo.png";
 
 // Primary navigation, grouped the same way as the reference dashboard.
@@ -50,13 +51,15 @@ const SectionLabel = ({ children }) => (
 );
 
 export const Sidebar = () => {
+  const navigate = useNavigate();
   const { state } = useAppContext();
   const user = state?.user || {};
   const name =
     [user.first_name, user.last_name].filter(Boolean).join(" ") || "Guest";
+  const chosenAvatar = avatars.find((a) => a.pathName === user.avatar) || {};
 
   return (
-    <aside className='flex w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm'>
+    <aside className='flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm'>
       {/* Brand */}
       <div className='flex items-center gap-2 px-5 py-5'>
         <img
@@ -80,11 +83,15 @@ export const Sidebar = () => {
       {/* Footer: settings + profile */}
       <div className='border-t border-dr-border px-3 py-3'>
         <NavItem item={{ label: "Settings", icon: "settings-outline" }} />
-        <div className='mt-2 flex items-center gap-3 rounded-xl px-3 py-2'>
+        <button
+          type='button'
+          onClick={() => navigate(ROUTE_USERS_ME)}
+          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-dr-surface-light'
+        >
           <div className='flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-sm font-semibold text-dr-accent'>
-            {user.avatar ? (
+            {chosenAvatar.image ? (
               <img
-                src={user.avatar}
+                src={chosenAvatar.image}
                 alt={name}
                 className='h-full w-full object-cover'
               />
@@ -100,7 +107,7 @@ export const Sidebar = () => {
               {user.email || "Not signed in"}
             </p>
           </div>
-        </div>
+        </button>
       </div>
     </aside>
   );

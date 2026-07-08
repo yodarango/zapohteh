@@ -3,6 +3,7 @@ export const ROUTE_AUTH = "/auth";
 export const ROUTE_AUTH_VERIFY = "/auth/verify";
 export const ROUTE_LEARN = "/learn";
 export const ROUTE_COURSES = "/courses";
+export const ROUTE_USERS_ME = "/users/me";
 
 // api base
 export const API_BASE = import.meta.env.VITE_API_BASE || "/api";
@@ -26,6 +27,9 @@ export const API_GET_SUBJECTS = API_BASE + "/subjects";
 export const API_POST_SUBJECTS = API_BASE + "/subjects";
 export const API_GET_COURSE_SUBJECTS = API_BASE + "/course-subjects";
 export const API_POST_COURSE_SUBJECTS = API_BASE + "/course-subjects";
+export const API_GET_CHAT = API_BASE + "/chat";
+export const API_POST_CHAT = API_BASE + "/chat";
+
 
 export const ROUTE_SUBJECTS = "/subjects";
 

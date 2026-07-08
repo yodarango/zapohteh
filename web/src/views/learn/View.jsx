@@ -10,9 +10,11 @@ import {
   API_GET_SUBJECTS,
   API_GET_COURSE_SUBJECTS,
   API_POST_COURSE_SUBJECTS,
-  ROUTE_HOME,
+  API_BASE,
+  ROUTE_COURSES,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
+import { ChatPanel } from "./ChatPanel";
 import { useAppContext } from "@views/context/appContextProvider";
 
 // turns a chapter title into a DOM id that can be used as an anchor target
@@ -235,10 +237,80 @@ export const LearnView = () => {
     }
   };
 
+  const backendOrigin = API_BASE.startsWith("http")
+    ? new URL(API_BASE).origin
+    : window.location.origin;
+
+  const downloadPDF = () => {
+    const cover = coverImagePath
+      ? `<img src="${coverImagePath.startsWith("/data/") ? backendOrigin + coverImagePath : coverImagePath}" alt="${topic}" style="max-width:100%; border-radius:0.75rem; margin:1rem 0;">`
+      : "";
+    const introHtml = intro ? marked.parse(intro) : "";
+    const chaptersHtml = chapters
+      .map(
+        (chapter) => `
+          <h2>${chapter.title}</h2>
+          ${marked.parse(chapter.body)}
+        `,
+      )
+      .join("");
+    const html = `
+      <html>
+        <head>
+          <title>${topic}</title>
+          <style>
+            body { font-family: system-ui, sans-serif; color: #1d2333; max-width: 800px; margin: 2rem auto; padding: 1rem; }
+            .research-content h1 { font-size: 2rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
+            .research-content h2 { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.5rem; }
+            .research-content h3 { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+            .research-content p { margin: 0.5rem 0; line-height: 1.7; }
+            .research-content ul, .research-content ol { margin: 0.5rem 0; padding-left: 1.5rem; list-style: revert; }
+            .research-content a { color: #2f6bff; text-decoration: underline; }
+            .research-content code { background: rgba(15,23,42,0.06); padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
+            .research-content blockquote { border-left: 3px solid rgba(15,23,42,0.15); padding-left: 1rem; margin: 0.75rem 0; opacity: 0.85; }
+            .research-content img { display: block; max-width: 100%; height: auto; border-radius: 0.75rem; margin: 1rem 0; }
+          </style>
+        </head>
+        <body>
+          <h1>${topic}</h1>
+          ${cover}
+          <div class="research-content">${introHtml}${chaptersHtml}</div>
+        </body>
+      </html>
+    `.replace(/src="\/data\//g, `src="${backendOrigin}/data/`);
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => {
+      win.print();
+      win.close();
+    }, 500);
+  };
+
+  const narrate = () => {
+    const text = content
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    fetch("https://tanjreen.shrood.app", {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: text,
+    });
+
+    showToast({ type: "info", message: "Narration request sent" });
+  };
+
   return (
     <div className='flex h-full gap-8'>
       <div className='min-w-0 flex-1 max-w-[800px] overflow-y-auto px-4 py-8'>
-        <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
+        <Button secondary className='mb-6' onClick={() => navigate(ROUTE_COURSES)}>
           <ion-icon name='arrow-back-outline'></ion-icon>
           <span className='ml-2'>Back</span>
         </Button>
@@ -333,9 +405,9 @@ export const LearnView = () => {
         })}
       </div>
 
-      <div className='hidden h-full w-64 shrink-0 overflow-y-auto lg:block'>
+      <div className='hidden h-full w-64 shrink-0 overflow-y-auto lg:block sticky top-0 self-start border-l border-dr-border pl-4'>
         {chapters.length > 0 && (
-          <div className='rounded-2xl border border-dr-border bg-dr-surface p-4'>
+          <div className='py-4'>
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
               Chapters
             </h3>
@@ -403,6 +475,24 @@ export const LearnView = () => {
             </div>
           </div>
         )}
+
+        <div className='mt-4 rounded-2xl border border-dr-border bg-dr-surface p-4'>
+          <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+            Actions
+          </h3>
+          <div className='flex flex-col gap-2'>
+            <Button secondary className='w-full' onClick={downloadPDF}>
+              <ion-icon name='download-outline'></ion-icon>
+              <span className='ml-2'>Download PDF</span>
+            </Button>
+            <Button secondary className='w-full' onClick={narrate}>
+              <ion-icon name='musical-notes-outline'></ion-icon>
+              <span className='ml-2'>Narrate</span>
+            </Button>
+          </div>
+        </div>
+
+        <ChatPanel topic={topic} chapters={chapters} />
       </div>
     </div>
   );

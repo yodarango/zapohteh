@@ -98,70 +98,62 @@ func (u *User) Create() (error){
 * 
 * status: ✅
 ****************************************************************************************/
-func (u *User) Update(userId uint) (error){
+func (u *User) Update(userId uint) (error) {
+	if u.Username != "" {
+		var existingId int
+		err := ModelsRepo.DB.Conn.QueryRow(
+			"SELECT id FROM users WHERE username = ? AND id != ?",
+			u.Username, userId,
+		).Scan(&existingId)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("error checking username: %w", err)
+		}
+		if err == nil {
+			return fmt.Errorf("this username is already taken, please try another one")
+		}
+	}
+
+	if u.Email != "" {
+		var existingId int
+		err := ModelsRepo.DB.Conn.QueryRow(
+			"SELECT id FROM users WHERE email = ? AND id != ?",
+			u.Email, userId,
+		).Scan(&existingId)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("error checking email: %w", err)
+		}
+		if err == nil {
+			return fmt.Errorf("this email is already linked to another account, are you sure you don't have an account yet")
+		}
+	}
+
 	query := `
-		UPDATE users SET 
+		UPDATE users SET
 		first_name = ?,
-		last_name =? ,
+		last_name = ?,
+		username = ?,
+		email = ?,
+		avatar = ?
 		WHERE id = ?
 	`
 
-	queryUsername := `
-		SELECT id, username, email 
-		FROM users 
-		WHERE username = ? OR email = ?
-	`
-
-	userIdsByUsername := make([]int, 0)
-	userIdsByEmail := make([]int, 0)
-
-	rows, err := ModelsRepo.DB.Conn.Query(queryUsername, u.Username)
-
-	if err != nil {
-		return fmt.Errorf("Erro getting users by username \n %w", err)
-	}
-
-	defer rows.Close()
-
-	// first of ll check if this email or username exist
-	for rows.Next(){
-		var user User
-
-		err := rows.Scan(&user)
-
-		if err != nil {
-			return fmt.Errorf("Erro sacning rows \n %w", err)
-		}
-
-		// only check the users that are not this user 
-		if userId != uint(user.Id) {
-			userIdsByUsername = append(userIdsByUsername, user.Id)
-			userIdsByEmail = append(userIdsByEmail, user.Id)
-		}
-	}
-
-	if len(userIdsByUsername) > 0 {
-		return fmt.Errorf("this username is already taken, please try another one")
-	}
-
-	if len(userIdsByUsername) > 0 {
-		return fmt.Errorf("this email is already linked to another account, are you sure you don't have an account yet")
-	}
-
-	result, err := ModelsRepo.DB.Conn.Exec(query, 
+	result, err := ModelsRepo.DB.Conn.Exec(query,
 		u.FirstName,
 		u.LastName,
+		u.Username,
+		u.Email,
+		u.Avatar,
 		userId,
 	)
 
 	if err != nil {
-		return fmt.Errorf("could not update this user \n %w", err)
+		return fmt.Errorf("could not update this user: %w", err)
 	}
 
 	_, err = result.RowsAffected()
 
 	if err != nil {
-		return fmt.Errorf("could not get rows affected: \n %w", err)
+		return fmt.Errorf("could not get rows affected: %w", err)
 	}
 
 	return nil
@@ -521,8 +513,7 @@ func (u *User) ForgotPassword(body io.ReadCloser) error {
 ****************************************************************************************/
 func (u *User) ChangePassword(body io.ReadCloser, userId uint) error {
 	type ChangePasswordRequest struct {
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
+		NewPassword string `json:"new_password"`
 	}
 
 	var requestBody ChangePasswordRequest
@@ -530,10 +521,6 @@ func (u *User) ChangePassword(body io.ReadCloser, userId uint) error {
 	err := json.NewDecoder(body).Decode(&requestBody)
 	if err != nil {
 		return fmt.Errorf("invalid request format: %w", err)
-	}
-
-	if len(requestBody.CurrentPassword) == 0 {
-		return fmt.Errorf("current password is required")
 	}
 
 	if len(requestBody.NewPassword) == 0 {
@@ -547,7 +534,7 @@ func (u *User) ChangePassword(body io.ReadCloser, userId uint) error {
 	// Get current password from database
 	query := `
 		SELECT password
-		FROM users 
+		FROM users
 		WHERE id = ?
 	`
 
@@ -560,12 +547,6 @@ func (u *User) ChangePassword(body io.ReadCloser, userId uint) error {
 			return fmt.Errorf("user not found")
 		}
 		return fmt.Errorf("error retrieving user password: %w", err)
-	}
-
-	// Verify current password
-	err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(requestBody.CurrentPassword))
-	if err != nil {
-		return fmt.Errorf("current password is incorrect")
 	}
 
 	// Check if new password is different from current
