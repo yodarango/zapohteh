@@ -1,11 +1,11 @@
-# Goilerplate
+# Zapohteh
 
-A clean boilerplate for full-stack applications built with Go and React.
+AI-powered learning companion. Research any topic with AI and turn it into structured courses. Track your reading progress, chat with an AI assistant, and organize your learning by subjects.
 
 ## What's included
 
-- Go backend with sample auth routes and JWT authentication
-- MySQL database setup with migrations
+- Go backend with authentication, JWT, and AI-powered course generation
+- SQLite database setup with migrations
 - React frontend with Vite, React Router, and a custom design system
 - Docker and Docker Compose configuration
 - Email templates for verification, welcome, and password reset

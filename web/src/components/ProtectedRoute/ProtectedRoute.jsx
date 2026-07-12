@@ -1,9 +1,8 @@
-import { useAppContext } from "../../views/context/appContextProvider";
+import { useAppContext } from "@views/context/appContextProvider";
 import { ROUTE_AUTH, ROUTE_AUTH_VERIFY } from "@constants";
-import { Navigate } from "react-router-dom";
-import React from "react";
+import { Navigate, Outlet } from "react-router-dom";
 
-export const ProtectedRoute = ({ children }) => {
+export const ProtectedRoute = () => {
   const { state } = useAppContext();
   const { isAuthenticated, isPending, isLoading } = state;
 
@@ -11,15 +10,15 @@ export const ProtectedRoute = ({ children }) => {
     return <></>;
   }
 
-  // if the user has not yet verified their eamil
-  if (isPending) {
-    return <Navigate to={ROUTE_AUTH_VERIFY} replace />;
-  }
-
-  // If user is not authenticated but it has already been verified, redirect to auth page
+  // Not authenticated -> login
   if (!isAuthenticated) {
     return <Navigate to={ROUTE_AUTH} replace />;
   }
 
-  return children;
+  // Authenticated but not verified -> verification
+  if (isPending) {
+    return <Navigate to={ROUTE_AUTH_VERIFY} replace />;
+  }
+
+  return <Outlet />;
 };

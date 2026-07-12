@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"goilerplate/constants"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"zapohteh/constants"
 )
 
 type AuthUser struct {

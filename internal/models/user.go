@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"goilerplate/internal/lib"
-	"goilerplate/internal/utils"
 	"io"
 
 	"golang.org/x/crypto/bcrypt"
+	"zapohteh/internal/lib"
+	"zapohteh/internal/utils"
 )
 type User struct {
 	VerificationCode string `json:"verification_code"` // has the user verified their account 

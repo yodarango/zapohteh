@@ -1,11 +1,11 @@
-// Service Worker for goilerplate PWA
-const CACHE_NAME = "goilerplate";
+// Service Worker for zapohteh PWA
+const CACHE_NAME = "zapohteh";
 const urlsToCache = [
   "/",
   "/auth",
   "/auth/verify",
-  "/logo.png",
-  "/splash.png",
+  "/logo.webp",
+  "/splash.webp",
   "/manifest.json",
   "https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js",
   "https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js",
@@ -80,8 +80,8 @@ function doBackgroundSync() {
 self.addEventListener("push", (event) => {
   const options = {
     body: event.data ? event.data.text() : "New content available!",
-    icon: "/logo.png",
-    badge: "/logo.png",
+    icon: "/logo.webp",
+    badge: "/logo.webp",
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
@@ -90,18 +90,18 @@ self.addEventListener("push", (event) => {
     actions: [
       {
         action: "explore",
-        title: "Open goilerplate",
-        icon: "/logo.png",
+        title: "Open zapohteh",
+        icon: "/logo.webp",
       },
       {
         action: "close",
         title: "Close notification",
-        icon: "/logo.png",
+        icon: "/logo.webp",
       },
     ],
   };
 
-  event.waitUntil(self.registration.showNotification("goilerplate", options));
+  event.waitUntil(self.registration.showNotification("zapohteh", options));
 });
 
 // Notification click handling

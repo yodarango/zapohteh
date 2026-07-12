@@ -2,14 +2,15 @@ package models
 
 import (
 	"fmt"
-	"goilerplate/internal/lib"
-	"goilerplate/internal/utils"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"zapohteh/internal/lib"
+	"zapohteh/internal/utils"
 )
 
 // Research represents a topic research request together with the chapters that
@@ -24,6 +25,12 @@ type Research struct {
 	SearchWeb bool `json:"searchWeb"`
 	// SubjectIDs are the subjects to attach to the created course.
 	SubjectIDs []int `json:"subjectIds"`
+	// Language is the language in which the content is generated.
+	Language string `json:"language"`
+	// WritingStyle controls the tone and register of the generated text.
+	WritingStyle string `json:"writingStyle"`
+	// UserID is the owner of the research content.
+	UserID uint `json:"userId"`
 
 	// OnChapters is called once the chapter list has been generated.
 	OnChapters func([]string) `json:"-"`
@@ -57,30 +64,61 @@ const coverImageDescriptionPrompt = `You are an assistant that helps create cove
 // coverImageSystemPrompt explains to the image model what kind of cover image is expected.
 const coverImageSystemPrompt = `You are an image generation assistant that creates a single, eye-catching cover image for an educational blog post. The image should be visually engaging, thematically relevant, and suitable as a 1024x1024 blog post cover. Favour a clean, professional style without small text or labels.`
 
+// languageInstruction returns a clean language value, defaulting to English.
+func languageInstruction(language string) string {
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		return "English"
+	}
+	return lang
+}
+
+// writingStyleDescription returns a prompt instruction for the requested tone.
+func writingStyleDescription(style string) string {
+	switch strings.ToLower(style) {
+	case "academic":
+		return "Write the content as a scholarly research paper: formal tone, structured arguments, citations, and advanced academic vocabulary."
+	case "professional":
+		return "Write the content as a professional blog post: clear, engaging, well-structured, and suitable for an educated general audience."
+	case "casual":
+		return "Write the content in everyday vernacular language using common words and simple terms that even a learner of the language can understand."
+	default:
+		return "Write the content as a professional blog post: clear, engaging, well-structured, and suitable for an educated general audience."
+	}
+}
+
+// contentInstructions returns the language and writing style prompt for the AI.
+func (r *Research) contentInstructions() string {
+	lang := languageInstruction(r.Language)
+	style := writingStyleDescription(r.WritingStyle)
+	return fmt.Sprintf("Write the response in %s. %s", lang, style)
+}
+
 // Course represents a single researched topic stored in the data directory. ID is
 // the raw folder name (used in the learn route) and Name is its Title Case version.
 type Course struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	CoverImagePath string    `json:"coverImagePath"`
-	TotalChapters  int       `json:"totalChapters"`
-	ReadChapters   int       `json:"readChapters"`
-	Subjects       []Subject `json:"subjects"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	CoverImagePath string     `json:"coverImagePath"`
+	TotalChapters  int        `json:"totalChapters"`
+	ReadChapters   int        `json:"readChapters"`
+	Subjects       []Subject  `json:"subjects"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	LastReadAt     *time.Time `json:"lastReadAt"`
 }
 
 /**************************************************************************************
-* GetCoverImagePath returns the stored cover image path for a research title, or an
-* empty string when none has been generated yet.
+* GetCoverImagePath returns the stored cover image path for a research title and user,
+* or an empty string when none has been generated yet.
 **************************************************************************************/
-func GetCoverImagePath(title string) string {
+func GetCoverImagePath(userId uint, title string) string {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return ""
 	}
 	var path string
 	err := ModelsRepo.DB.Conn.QueryRow(
-		"SELECT cover_image_path FROM research WHERE title = ?",
-		title,
+		"SELECT cover_image_path FROM research WHERE user_id = ? AND title = ?",
+		userId, title,
 	).Scan(&path)
 	if err != nil {
 		return ""
@@ -89,24 +127,27 @@ func GetCoverImagePath(title string) string {
 }
 
 /**************************************************************************************
-* ListCourses reads the data directory and returns every researched topic as a
-* Course, deriving a human readable Title Case name from each folder name. Files
-* (such as the database) are ignored, only directories are listed. Each course is also
-* enriched with its cover image path from the research table when available.
+* ListCourses reads the data directory for a user and returns every researched topic as
+* a Course. Files are ignored, only directories are listed. Each course is also enriched
+* with its cover image path, reading progress, and subjects from the database.
 **************************************************************************************/
-func ListCourses() ([]Course, error) {
-	entries, err := os.ReadDir(dataDir)
+func ListCourses(userId uint) ([]Course, error) {
+	userDir := filepath.Join(dataDir, fmt.Sprintf("user_%d", userId))
+	entries, err := os.ReadDir(userDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []Course{}, nil
 		}
-		return nil, fmt.Errorf("failed to read data directory: %w", err)
+		return nil, fmt.Errorf("failed to read user data directory: %w", err)
 	}
 
 	coverPaths := make(map[string]string)
 	createdAts := make(map[string]time.Time)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
-		rows, err := ModelsRepo.DB.Conn.Query("SELECT title, cover_image_path, created_at FROM research WHERE cover_image_path != ''")
+		rows, err := ModelsRepo.DB.Conn.Query(
+			"SELECT title, cover_image_path, created_at FROM research WHERE user_id = ? AND cover_image_path != ''",
+			userId,
+		)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -121,9 +162,11 @@ func ListCourses() ([]Course, error) {
 	}
 
 	readCounts := make(map[string]int)
+	lastReadAts := make(map[string]*time.Time)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT course_title, COUNT(*) FROM reading_progress WHERE read = 1 GROUP BY course_title",
+			"SELECT course_title, COUNT(*) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
+			userId,
 		)
 		if err == nil {
 			defer rows.Close()
@@ -135,9 +178,25 @@ func ListCourses() ([]Course, error) {
 				}
 			}
 		}
+
+		rows2, err2 := ModelsRepo.DB.Conn.Query(
+			"SELECT course_title, MAX(updated_at) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
+			userId,
+		)
+		if err2 == nil {
+			defer rows2.Close()
+			for rows2.Next() {
+				var title string
+				var lastRead time.Time
+				if err := rows2.Scan(&title, &lastRead); err == nil {
+					sanitized := utils.SanitizeFilename(title)
+					lastReadAts[sanitized] = &lastRead
+				}
+			}
+		}
 	}
 
-	subjectMap, err := SubjectColorMap()
+	subjectMap, err := SubjectColorMap(userId)
 	if err != nil {
 		subjectMap = make(map[string][]Subject)
 	}
@@ -148,7 +207,7 @@ func ListCourses() ([]Course, error) {
 			continue
 		}
 		name := entry.Name()
-		total := countChapters(filepath.Join(dataDir, name))
+		total := countChapters(filepath.Join(userDir, name))
 		courses = append(courses, Course{
 			ID:             name,
 			Name:           utils.ToTitleCase(name),
@@ -157,6 +216,7 @@ func ListCourses() ([]Course, error) {
 			ReadChapters:   readCounts[name],
 			Subjects:       subjectMap[name],
 			CreatedAt:      createdAts[name],
+			LastReadAt:     lastReadAts[name],
 		})
 	}
 
@@ -208,9 +268,9 @@ func (r *Research) GenerateChapters() error {
 	You are a scholarly research assistant machine that helps structure the analysis of any topic by systematizing its analysis into chapters.
 	The user will give you a description of the topic they want to research according to the level of depth specified by them.
 	Your job is to provide a set of chapters to divide the topic into and facilitate its analysis.
-	Return ONLY a comma separated list of chapter titles without any other text, numbering or formatting.
+	Return ONLY a comma separated list of chapter titles in %s without any other text, numbering or formatting.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the chapters.
-	`)
+	`, languageInstruction(r.Language))
 
 	user := fmt.Sprintf(
 		`Topic Description:
@@ -264,7 +324,8 @@ func (r *Research) folderPath() string {
 	if strings.TrimSpace(name) == "" {
 		name = r.Topic
 	}
-	return filepath.Join("data", utils.SanitizeFilename(name))
+	userDir := fmt.Sprintf("user_%d", r.UserID)
+	return filepath.Join("data", userDir, utils.SanitizeFilename(name))
 }
 
 /**************************************************************************************
@@ -276,9 +337,9 @@ func levelDescription(level string) string {
 	case ResearchLevelLow:
 		return "Shallow and introductory (around 3 to 5 chapters)"
 	case ResearchLevelHigh:
-		return "Deep and comprehensive (around 10 to 15 chapters). The nature of this research is academic in nature and very liekly used in post graduate scholarly research, be sure to site your sources and use scholarly and reliable sources."
+		return "Deep and comprehensive (around 10 to 15 chapters). The nature of this research is academic in nature and very liekly used in post graduate scholarly research, be sure to site your sources in chicago style and use scholarly and reliable sources."
 	default:
-		return "Moderately detailed (around 6 to 9 chapters). The nature of this research is semi-academic in nature and probably used for a research paper at a master's level, be sure to site your sources and use reliable sources."
+		return "Moderately detailed (around 6 to 9 chapters). The nature of this research is semi-academic in nature and probably used for a research paper at a master's level, be sure to site your sources in chicago style and use reliable sources."
 	}
 }
 
@@ -416,13 +477,14 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 		)
 	}
 
-	systemDescription := `You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively.
+	systemDescription := fmt.Sprintf(`You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively.
 	The user will give you the description of the topic they are interested in, as well as the depth of your description. Please respect their depth description and do not provide more or less details than needed.
-	Cite your sources and make sure to use reliable and scholarly ones.
+	Cite your sources in chicago style and make sure to use reliable and scholarly ones.
 	When the user provides the content of the previous chapter, write the current chapter so it flows naturally from it. Do not repeat the previous chapter content; build upon it so the reader feels a continuous narrative.
+	Do not introduce the topic or purpose of the chpater. For example, do not say this chapters delves into..., or this chapter explains... Simply describe the content. THat's it.
 	The user may give you a list of chapters that they already have the description for so you know what they are missing.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
-	`
+	%s`, r.contentInstructions())
 
 	// only swap to the web-search enabled model when the user opted in
 	service := lib.NewOpenAIService()
@@ -628,8 +690,8 @@ func (r *Research) GenerateCoverImage() error {
 func (r *Research) generateCoverImageDescription(title string) (string, error) {
 	userPrompt := fmt.Sprintf(
 		`The user is a researcher that is investigating the following topic: %s.
-The following are the chapters of a course he has enrolled in: %s.
-Based on this, create a description that can be sent to an image generation model to create the cover image for a blog post in dimensions 1024 x 1024.`,
+		The following are the chapters of a course he has enrolled in: %s.
+		Based on this, create a description that can be sent to an image generation model to create the cover image for a blog post in dimensions 1024 x 1024.`,
 		title, strings.Join(r.Chapters, ", "),
 	)
 
@@ -648,13 +710,13 @@ Based on this, create a description that can be sent to an image generation mode
 **************************************************************************************/
 func (r *Research) SaveCoverImageDescription(title, description string) error {
 	query := `
-		INSERT INTO research (title, cover_image_description)
-		VALUES (?, ?)
-		ON CONFLICT(title) DO UPDATE SET
+		INSERT INTO research (user_id, title, cover_image_description)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, title) DO UPDATE SET
 			cover_image_description = excluded.cover_image_description,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	_, err := ModelsRepo.DB.Conn.Exec(query, title, description)
+	_, err := ModelsRepo.DB.Conn.Exec(query, r.UserID, title, description)
 	return err
 }
 
@@ -664,27 +726,27 @@ func (r *Research) SaveCoverImageDescription(title, description string) error {
 **************************************************************************************/
 func (r *Research) SaveCoverImagePath(title, path string) error {
 	query := `
-		INSERT INTO research (title, cover_image_path)
-		VALUES (?, ?)
-		ON CONFLICT(title) DO UPDATE SET
+		INSERT INTO research (user_id, title, cover_image_path)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, title) DO UPDATE SET
 			cover_image_path = excluded.cover_image_path,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	_, err := ModelsRepo.DB.Conn.Exec(query, title, path)
+	_, err := ModelsRepo.DB.Conn.Exec(query, r.UserID, title, path)
 	return err
 }
 
 /**************************************************************************************
 * GetReadChapters returns the titles of chapters that have been marked as read for a
-* given course.
+* given course by a given user.
 **************************************************************************************/
-func GetReadChapters(courseTitle string) ([]string, error) {
+func GetReadChapters(userId uint, courseTitle string) ([]string, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return []string{}, nil
 	}
 	rows, err := ModelsRepo.DB.Conn.Query(
-		"SELECT chapter FROM reading_progress WHERE course_title = ? AND read = 1",
-		courseTitle,
+		"SELECT chapter FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1",
+		userId, courseTitle,
 	)
 	if err != nil {
 		return nil, err
@@ -703,16 +765,16 @@ func GetReadChapters(courseTitle string) ([]string, error) {
 }
 
 /**************************************************************************************
-* SaveReadingProgress marks a chapter as read or unread for a given course.
+* SaveReadingProgress marks a chapter as read or unread for a given user's course.
 **************************************************************************************/
-func SaveReadingProgress(courseTitle, chapter string, read bool) error {
+func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
 	query := `
-		INSERT INTO reading_progress (course_title, chapter, read)
-		VALUES (?, ?, ?)
-		ON CONFLICT(course_title, chapter) DO UPDATE SET
+		INSERT INTO reading_progress (user_id, course_title, chapter, read)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, course_title, chapter) DO UPDATE SET
 			read = excluded.read,
 			updated_at = CURRENT_TIMESTAMP
 	`
@@ -720,7 +782,7 @@ func SaveReadingProgress(courseTitle, chapter string, read bool) error {
 	if read {
 		readFlag = 1
 	}
-	_, err := ModelsRepo.DB.Conn.Exec(query, courseTitle, chapter, readFlag)
+	_, err := ModelsRepo.DB.Conn.Exec(query, userId, courseTitle, chapter, readFlag)
 	return err
 }
 

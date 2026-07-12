@@ -1,4 +1,4 @@
-module goilerplate
+module zapohteh
 
 go 1.24.0
 

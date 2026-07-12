@@ -22,6 +22,8 @@ const ROUTE_GET_READING_PROGRESS = ROUTE_API_BASE + "/reading-progress"
 const ROUTE_POST_READING_PROGRESS = ROUTE_API_BASE + "/reading-progress"
 const ROUTE_GET_SUBJECTS = ROUTE_API_BASE + "/subjects"
 const ROUTE_POST_SUBJECTS = ROUTE_API_BASE + "/subjects"
+const ROUTE_PUT_SUBJECTS = ROUTE_API_BASE + "/subjects/"
+const ROUTE_DELETE_SUBJECTS = ROUTE_API_BASE + "/subjects/"
 const ROUTE_GET_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 const ROUTE_POST_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 

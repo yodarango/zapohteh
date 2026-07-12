@@ -32,7 +32,7 @@ export const SignupForm = () => {
       setupAuth();
 
       showToast({
-        message: "Account created successfully! Welcome to Goilerplate.",
+        message: "Account created successfully! Welcome to Zapohteh.",
         type: "success",
       });
     },

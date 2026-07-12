@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button } from "@ds";
+import { Button, Select } from "@ds";
 import { API_GET_CHAT, API_POST_CHAT } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -81,21 +81,16 @@ export const ChatPanel = ({ topic, chapters }) => {
       </h3>
 
       <div className='mb-3'>
-        <label className='mb-1 block text-xs font-medium text-dr-text-muted'>
-          Chapter
-        </label>
-        <select
+        <Select
+          label='Chapter'
           value={chapter}
-          onChange={(e) => setChapter(e.target.value)}
-          className='w-full rounded-xl border border-dr-border bg-dr-bg px-3 py-2 text-sm text-dr-text outline-none focus:border-dr-accent'
-        >
-          <option value='generic'>Generic</option>
-          {chapters.map((c) => (
-            <option key={c.title} value={c.title}>
-              {c.title}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setChapter(val)}
+          placeholder='Select a chapter'
+          options={[
+            { value: "generic", label: "Generic" },
+            ...chapters.map((c) => ({ value: c.title, label: c.title })),
+          ]}
+        />
       </div>
 
       <div className='mb-3 max-h-48 overflow-y-auto'>

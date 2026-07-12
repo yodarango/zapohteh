@@ -1,16 +1,16 @@
 package main
 
 import (
-	"goilerplate/api"
-	"goilerplate/config"
-	"goilerplate/internal/db"
-	"goilerplate/internal/models"
-	"goilerplate/repo"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/joho/godotenv"
+	"zapohteh/api"
+	"zapohteh/config"
+	"zapohteh/internal/db"
+	"zapohteh/internal/models"
+	"zapohteh/repo"
 )
 
 

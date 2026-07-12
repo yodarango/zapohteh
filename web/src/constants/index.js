@@ -1,4 +1,5 @@
 export const ROUTE_HOME = "/";
+export const ROUTE_CREATE = "/create";
 export const ROUTE_AUTH = "/auth";
 export const ROUTE_AUTH_VERIFY = "/auth/verify";
 export const ROUTE_LEARN = "/learn";
@@ -25,6 +26,8 @@ export const API_GET_READING_PROGRESS = API_BASE + "/reading-progress";
 export const API_POST_READING_PROGRESS = API_BASE + "/reading-progress";
 export const API_GET_SUBJECTS = API_BASE + "/subjects";
 export const API_POST_SUBJECTS = API_BASE + "/subjects";
+export const API_PUT_SUBJECTS = API_BASE + "/subjects";
+export const API_DELETE_SUBJECTS = API_BASE + "/subjects";
 export const API_GET_COURSE_SUBJECTS = API_BASE + "/course-subjects";
 export const API_POST_COURSE_SUBJECTS = API_BASE + "/course-subjects";
 export const API_GET_CHAT = API_BASE + "/chat";

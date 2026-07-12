@@ -1,7 +1,7 @@
 package models
 
 import (
-	"goilerplate/repo"
+	"zapohteh/repo"
 )
 
 var ModelsRepo *repo.AppRepo

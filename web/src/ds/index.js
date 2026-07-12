@@ -11,6 +11,8 @@ export { Button } from "./Button/Button";
 export { Hearts } from "./Hearts/Hearts";
 export { Input } from "./Input/Input";
 export { Modal } from "./Modal/Modal";
+export { ConfirmationModal } from "./ConfirmationModal/ConfirmationModal";
+export { Select } from "./Select/Select";
 export { Toast } from "./Toast/Toast";
 export { Loading } from "./Loading";
 export {

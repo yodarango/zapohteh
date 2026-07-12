@@ -1,12 +1,17 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { ROUTE_HOME, ROUTE_COURSES, ROUTE_SUBJECTS, ROUTE_USERS_ME } from "@constants";
+import {
+  ROUTE_CREATE,
+  ROUTE_COURSES,
+  ROUTE_SUBJECTS,
+  ROUTE_USERS_ME,
+} from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
 import { avatars } from "@images";
-import goilerplateLogo from "../../../../public/logo.png";
+import zapohtehLogo from "../../../../public/logo.webp";
 
 // Primary navigation, grouped the same way as the reference dashboard.
 const GENERAL = [
-  { label: "Dashboard", icon: "grid-outline", to: ROUTE_HOME },
+  { label: "Create", icon: "add-circle-outline", to: ROUTE_CREATE },
   { label: "Courses", icon: "book-outline", to: ROUTE_COURSES },
   { label: "Subjects", icon: "pricetag-outline", to: ROUTE_SUBJECTS },
 ];
@@ -52,7 +57,7 @@ const SectionLabel = ({ children }) => (
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { state } = useAppContext();
+  const { state, logout } = useAppContext();
   const user = state?.user || {};
   const name =
     [user.first_name, user.last_name].filter(Boolean).join(" ") || "Guest";
@@ -63,11 +68,11 @@ export const Sidebar = () => {
       {/* Brand */}
       <div className='flex items-center gap-2 px-5 py-5'>
         <img
-          src={goilerplateLogo}
+          src={zapohtehLogo}
           alt='Logo'
           className='h-8 w-8 rounded-lg object-contain'
         />
-        <span className='text-lg font-bold text-dr-text'>Goilerplate</span>
+        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
       </div>
 
       {/* Navigation */}
@@ -104,9 +109,18 @@ export const Sidebar = () => {
               {name}
             </p>
             <p className='truncate text-xs text-dr-text-muted'>
-              {user.email || "Not signed in"}
+              {user.username || "Not signed in"}
             </p>
           </div>
+        </button>
+
+        <button
+          type='button'
+          onClick={logout}
+          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-dr-danger transition-colors hover:bg-dr-danger/10'
+        >
+          <ion-icon name='log-out-outline' class='text-base'></ion-icon>
+          Log out
         </button>
       </div>
     </aside>

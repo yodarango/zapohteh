@@ -16,6 +16,14 @@ const RESEARCH_LEVELS = [
   { value: "high", label: "High" },
 ];
 
+const LANGUAGES = ["English", "Italian", "Spanish", "German"];
+
+const WRITING_STYLES = [
+  { value: "academic", label: "Academic" },
+  { value: "professional", label: "Professional" },
+  { value: "casual", label: "Casual" },
+];
+
 const STEPS = [
   { label: "Craft Chapters", key: "chapters" },
   { label: "Research Chapters", key: "research" },
@@ -28,6 +36,8 @@ export const IntroSection = () => {
   const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
+  const [language, setLanguage] = useState("English");
+  const [writingStyle, setWritingStyle] = useState("academic");
   const [searchWeb, setSearchWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [chapters, setChapters] = useState([]);
@@ -93,6 +103,8 @@ export const IntroSection = () => {
           title: title.trim(),
           input: input.trim(),
           level,
+          language,
+          writingStyle,
           searchWeb,
           subjectIds: Array.from(selectedSubjects),
         },
@@ -178,6 +190,61 @@ export const IntroSection = () => {
                 </label>
               ))}
             </div>
+
+            {/* Language selector */}
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm font-medium text-dr-text'>Language</span>
+              <div className='flex flex-wrap gap-3'>
+                {LANGUAGES.map((option) => (
+                  <label
+                    key={option}
+                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                      language === option
+                        ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                        : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
+                    }`}
+                  >
+                    <input
+                      type='radio'
+                      name='language'
+                      value={option}
+                      checked={language === option}
+                      onChange={() => setLanguage(option)}
+                      className='sr-only'
+                    />
+                    {option}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Writing style selector */}
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm font-medium text-dr-text'>Writing style</span>
+              <div className='flex flex-wrap gap-3'>
+                {WRITING_STYLES.map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                      writingStyle === option.value
+                        ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                        : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
+                    }`}
+                  >
+                    <input
+                      type='radio'
+                      name='writing-style'
+                      value={option.value}
+                      checked={writingStyle === option.value}
+                      onChange={() => setWritingStyle(option.value)}
+                      className='sr-only'
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {/* Toggle to let the model search the web while elaborating chapters */}
             <div className='flex items-center justify-between'>
               <span className='text-sm font-medium text-dr-text'>

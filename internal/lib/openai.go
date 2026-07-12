@@ -90,6 +90,7 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 	}
 	messages = append(messages, chatMessage{Role: "user", Content: userPrompt})
 
+	fmt.Println(messages)
 	reqBody := chatRequest{
 		Model:    model,
 		Messages: messages,

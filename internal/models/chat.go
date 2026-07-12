@@ -2,16 +2,17 @@ package models
 
 import (
 	"fmt"
-	"goilerplate/internal/lib"
 	"strings"
 	"time"
+
+	"zapohteh/internal/lib"
 )
 
 // ChatMessage represents a single message in a lesson chat thread.
 type ChatMessage struct {
 	ID        int       `json:"id"`
 	UserID    uint      `json:"userId"`
-	Course    string    `json:"course"`
+	CourseID  int       `json:"courseId"`
 	Chapter   string    `json:"chapter"`
 	Role      string    `json:"role"`
 	Content   string    `json:"content"`
@@ -21,25 +22,29 @@ type ChatMessage struct {
 // Create inserts a new chat message into the database.
 func (c *ChatMessage) Create() error {
 	query := `
-		INSERT INTO chat_messages (user_id, course, chapter, role, content)
+		INSERT INTO chat_messages (user_id, course_id, chapter, role, content)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := ModelsRepo.DB.Conn.Exec(query, c.UserID, c.Course, c.Chapter, c.Role, c.Content)
+	_, err := ModelsRepo.DB.Conn.Exec(query, c.UserID, c.CourseID, c.Chapter, c.Role, c.Content)
 	if err != nil {
 		return fmt.Errorf("could not save chat message: %w", err)
 	}
 	return nil
 }
 
-// GetChatMessagesByCourse returns every message for a course, ordered oldest first.
-func GetChatMessagesByCourse(userId uint, course string) ([]ChatMessage, error) {
+// GetChatMessagesByCourse returns every message for a user's course, ordered oldest first.
+func GetChatMessagesByCourse(userId uint, courseTitle string) ([]ChatMessage, error) {
+	courseId, err := GetCourseID(userId, courseTitle)
+	if err != nil {
+		return nil, err
+	}
 	query := `
-		SELECT id, user_id, course, chapter, role, content, created_at
+		SELECT id, user_id, course_id, chapter, role, content, created_at
 		FROM chat_messages
-		WHERE user_id = ? AND course = ?
+		WHERE user_id = ? AND course_id = ?
 		ORDER BY created_at ASC
 	`
-	rows, err := ModelsRepo.DB.Conn.Query(query, userId, course)
+	rows, err := ModelsRepo.DB.Conn.Query(query, userId, courseId)
 	if err != nil {
 		return nil, fmt.Errorf("could not load chat messages: %w", err)
 	}
@@ -48,7 +53,7 @@ func GetChatMessagesByCourse(userId uint, course string) ([]ChatMessage, error) 
 	messages := make([]ChatMessage, 0)
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Course, &m.Chapter, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.CourseID, &m.Chapter, &m.Role, &m.Content, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("could not scan chat message: %w", err)
 		}
 		messages = append(messages, m)
@@ -57,15 +62,15 @@ func GetChatMessagesByCourse(userId uint, course string) ([]ChatMessage, error) 
 }
 
 // GetChatMessagesByChapter returns the most recent messages for a specific chapter.
-func GetChatMessagesByChapter(userId uint, course, chapter, role string, limit int) ([]ChatMessage, error) {
+func GetChatMessagesByChapter(userId uint, courseId int, chapter, role string, limit int) ([]ChatMessage, error) {
 	query := `
-		SELECT id, user_id, course, chapter, role, content, created_at
+		SELECT id, user_id, course_id, chapter, role, content, created_at
 		FROM chat_messages
-		WHERE user_id = ? AND course = ? AND chapter = ? AND role = ?
+		WHERE user_id = ? AND course_id = ? AND chapter = ? AND role = ?
 		ORDER BY created_at DESC
 		LIMIT ?
 	`
-	rows, err := ModelsRepo.DB.Conn.Query(query, userId, course, chapter, role, limit)
+	rows, err := ModelsRepo.DB.Conn.Query(query, userId, courseId, chapter, role, limit)
 	if err != nil {
 		return nil, fmt.Errorf("could not load chapter chat messages: %w", err)
 	}
@@ -74,7 +79,7 @@ func GetChatMessagesByChapter(userId uint, course, chapter, role string, limit i
 	messages := make([]ChatMessage, 0, limit)
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Course, &m.Chapter, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.CourseID, &m.Chapter, &m.Role, &m.Content, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("could not scan chat message: %w", err)
 		}
 		messages = append(messages, m)
@@ -87,23 +92,23 @@ func GetChatMessagesByChapter(userId uint, course, chapter, role string, limit i
 }
 
 // IsFirstChapterQuestion checks whether the user has already asked about this chapter.
-func IsFirstChapterQuestion(userId uint, course, chapter string) (bool, error) {
+func IsFirstChapterQuestion(userId uint, courseId int, chapter string) (bool, error) {
 	var count int
 	query := `
 		SELECT COUNT(*)
 		FROM chat_messages
-		WHERE user_id = ? AND course = ? AND chapter = ? AND role = 'user'
+		WHERE user_id = ? AND course_id = ? AND chapter = ? AND role = 'user'
 	`
-	err := ModelsRepo.DB.Conn.QueryRow(query, userId, course, chapter).Scan(&count)
+	err := ModelsRepo.DB.Conn.QueryRow(query, userId, courseId, chapter).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("could not count chapter questions: %w", err)
 	}
 	return count <= 1, nil
 }
 
-// readCourseContent loads the assembled markdown for a course.
-func readCourseContent(course string) string {
-	r := Research{Title: course}
+// readCourseContent loads the assembled markdown for a user's course.
+func readCourseContent(userId uint, course string) string {
+	r := Research{Title: course, UserID: userId}
 	content, err := r.ReadContent()
 	if err != nil {
 		return ""
@@ -145,8 +150,8 @@ func truncate(text string, maxLen int) string {
 }
 
 // buildChatPrompt creates the system prompt and user prompt for the AI tutor.
-func buildChatPrompt(userId uint, course, chapter, question string) (string, string) {
-	content := readCourseContent(course)
+func buildChatPrompt(userId uint, courseId int, courseTitle, chapter, question string) (string, string) {
+	content := readCourseContent(userId, courseTitle)
 	title, chapterMap := parseCourseContent(content)
 
 	if chapter != "generic" {
@@ -155,7 +160,7 @@ func buildChatPrompt(userId uint, course, chapter, question string) (string, str
 			chapterBody = ""
 		}
 
-		first, err := IsFirstChapterQuestion(userId, course, chapter)
+		first, err := IsFirstChapterQuestion(userId, courseId, chapter)
 		if err != nil {
 			first = true
 		}
@@ -168,8 +173,8 @@ func buildChatPrompt(userId uint, course, chapter, question string) (string, str
 			return system, question
 		}
 
-		users, _ := GetChatMessagesByChapter(userId, course, chapter, "user", 3)
-		assistants, _ := GetChatMessagesByChapter(userId, course, chapter, "assistant", 3)
+		users, _ := GetChatMessagesByChapter(userId, courseId, chapter, "user", 3)
+		assistants, _ := GetChatMessagesByChapter(userId, courseId, chapter, "assistant", 3)
 
 		var thread strings.Builder
 		for _, m := range users {
@@ -198,19 +203,24 @@ func buildChatPrompt(userId uint, course, chapter, question string) (string, str
 }
 
 // AskChat saves the user's question, queries the AI, and returns the assistant's response.
-func AskChat(userId uint, course, chapter, question string) (*ChatMessage, error) {
+func AskChat(userId uint, courseTitle, chapter, question string) (*ChatMessage, error) {
+	courseId, err := GetCourseID(userId, courseTitle)
+	if err != nil {
+		return nil, err
+	}
+
 	userMsg := ChatMessage{
-		UserID:  userId,
-		Course:  course,
-		Chapter: chapter,
-		Role:    "user",
-		Content: question,
+		UserID:   userId,
+		CourseID: courseId,
+		Chapter:  chapter,
+		Role:     "user",
+		Content:  question,
 	}
 	if err := userMsg.Create(); err != nil {
 		return nil, err
 	}
 
-	systemPrompt, userPrompt := buildChatPrompt(userId, course, chapter, question)
+	systemPrompt, userPrompt := buildChatPrompt(userId, courseId, courseTitle, chapter, question)
 
 	answer, err := lib.NewOpenAIService().Ask(systemPrompt, userPrompt)
 	if err != nil {
@@ -218,11 +228,11 @@ func AskChat(userId uint, course, chapter, question string) (*ChatMessage, error
 	}
 
 	assistantMsg := ChatMessage{
-		UserID:  userId,
-		Course:  course,
-		Chapter: chapter,
-		Role:    "assistant",
-		Content: answer,
+		UserID:   userId,
+		CourseID: courseId,
+		Chapter:  chapter,
+		Role:     "assistant",
+		Content:  answer,
 	}
 	if err := assistantMsg.Create(); err != nil {
 		return nil, err

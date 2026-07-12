@@ -1,10 +1,18 @@
 import { useState, useEffect } from "react";
-import { Button, Input, TextArea, Loading } from "@ds";
+import {
+  Button,
+  Input,
+  TextArea,
+  Loading,
+  ConfirmationModal,
+} from "@ds";
 import {
   API_GET_SUBJECTS,
   API_POST_SUBJECTS,
+  API_PUT_SUBJECTS,
+  API_DELETE_SUBJECTS,
 } from "@constants";
-import { useGet } from "@utils";
+import { useGet, authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
 export const SubjectsView = () => {
@@ -12,7 +20,10 @@ export const SubjectsView = () => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data, loading, error, refetch } = useGet({ url: API_GET_SUBJECTS });
   const subjects = data || [];
@@ -26,9 +37,23 @@ export const SubjectsView = () => {
     }
   }, [error, showToast]);
 
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setColor("");
+    setEditingId(null);
+  };
+
+  const startEdit = (subject) => {
+    setName(subject.name);
+    setDescription(subject.description || "");
+    setColor(subject.color);
+    setEditingId(subject.id);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !color.trim() || creating) {
+    if (!name.trim() || !color.trim() || saving) {
       showToast({
         type: "danger",
         message: "Please enter a name and a color",
@@ -36,11 +61,15 @@ export const SubjectsView = () => {
       return;
     }
 
-    setCreating(true);
+    setSaving(true);
     try {
-      const res = await fetch(API_POST_SUBJECTS, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const isEditing = editingId != null;
+      const url = isEditing
+        ? `${API_PUT_SUBJECTS}/${editingId}`
+        : API_POST_SUBJECTS;
+      const res = await fetch(url, {
+        method: isEditing ? "PUT" : "POST",
+        headers: authHeaders(),
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim(),
@@ -51,13 +80,14 @@ export const SubjectsView = () => {
       if (result.error || !result.success) {
         showToast({
           type: "danger",
-          message: String(result.error || "Failed to create subject"),
+          message: String(result.error || "Failed to save subject"),
         });
       } else {
-        showToast({ type: "success", message: "Subject created" });
-        setName("");
-        setDescription("");
-        setColor("");
+        showToast({
+          type: "success",
+          message: isEditing ? "Subject updated" : "Subject created",
+        });
+        resetForm();
         refetch();
       }
     } catch (err) {
@@ -66,7 +96,39 @@ export const SubjectsView = () => {
         message: err.message || "Something went wrong",
       });
     } finally {
-      setCreating(false);
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${API_DELETE_SUBJECTS}/${deletingId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const result = await res.json();
+      if (result.error || !result.success) {
+        showToast({
+          type: "danger",
+          message: String(result.error || "Failed to delete subject"),
+        });
+      } else {
+        showToast({ type: "success", message: "Subject deleted" });
+        if (editingId === deletingId) {
+          resetForm();
+        }
+        refetch();
+      }
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Something went wrong",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeletingId(null);
     }
   };
 
@@ -116,12 +178,34 @@ export const SubjectsView = () => {
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        <div className='mt-4 flex items-center justify-end'>
-          <Button primary disabled={creating} isLoading={creating}>
-            Create subject
+        <div className='mt-4 flex items-center justify-end gap-3'>
+          {editingId != null && (
+            <Button
+              type='button'
+              secondary
+              onClick={resetForm}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+          )}
+          <Button primary disabled={saving} isLoading={saving}>
+            {editingId != null ? "Update subject" : "Create subject"}
           </Button>
         </div>
       </form>
+
+      <ConfirmationModal
+        open={deletingId != null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDelete}
+        title='Delete subject'
+        message='Are you sure you want to delete this subject? This action cannot be undone.'
+        confirmText='Delete'
+        cancelText='Cancel'
+        confirmVariant='danger'
+        isLoading={isDeleting}
+      />
 
       {loading && (
         <div className='flex justify-center py-12'>
@@ -142,14 +226,36 @@ export const SubjectsView = () => {
               key={subject.id}
               className='rounded-2xl border border-dr-border bg-dr-surface p-4'
             >
-              <div className='mb-3 flex items-center gap-2'>
-                <span
-                  className='inline-block h-3 w-3 rounded-full'
-                  style={{ backgroundColor: subject.color }}
-                />
-                <span className='font-semibold text-dr-text'>
-                  {subject.name}
-                </span>
+              <div className='mb-3 flex items-center justify-between gap-2'>
+                <div className='flex items-center gap-2 min-w-0'>
+                  <span
+                    className='inline-block h-3 w-3 shrink-0 rounded-full'
+                    style={{ backgroundColor: subject.color }}
+                  />
+                  <span className='truncate font-semibold text-dr-text'>
+                    {subject.name}
+                  </span>
+                </div>
+                <div className='flex shrink-0 items-center gap-1'>
+                  <button
+                    type='button'
+                    onClick={() => startEdit(subject)}
+                    className='flex h-8 w-8 items-center justify-center rounded-lg border-none bg-transparent text-dr-accent transition-colors hover:bg-dr-accent-light'
+                    aria-label='Edit subject'
+                    title='Edit subject'
+                  >
+                    <ion-icon name='create-outline' />
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setDeletingId(subject.id)}
+                    className='flex h-8 w-8 items-center justify-center rounded-lg border-none bg-transparent text-dr-danger transition-colors hover:bg-dr-danger/10'
+                    aria-label='Delete subject'
+                    title='Delete subject'
+                  >
+                    <ion-icon name='trash-outline' />
+                  </button>
+                </div>
               </div>
               {subject.description && (
                 <p className='text-sm text-dr-text-muted'>

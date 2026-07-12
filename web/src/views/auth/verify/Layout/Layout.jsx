@@ -32,7 +32,7 @@ export const Layout = () => {
 
         showToast({
           type: "success",
-          message: "Email verified successfully! Welcome to Goilerplate!",
+          message: "Email verified successfully! Welcome to Zapohteh!",
         });
       }
     },
@@ -126,12 +126,12 @@ export const Layout = () => {
             </h3>
           </div>
           <p className='mb-4 text-center'>
-            Welcome to Goilerplate! Your account is ready to use.
+            Welcome to Zapohteh! Your account is ready to use.
           </p>
           {/* welcoming thumbnail */}
           <Thumbnail
             className='mb-4 mx-auto block'
-            alt='Welcome to Goilerplate'
+            alt='Welcome to Zapohteh'
             src={ThankyouImage}
             maxWidth='40rem'
             width='100%'

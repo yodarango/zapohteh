@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"goilerplate/constants"
-	"goilerplate/internal/models"
-	"goilerplate/internal/utils"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"zapohteh/constants"
+	"zapohteh/internal/models"
+	"zapohteh/internal/utils"
 )
 
 func Router () http.Handler {
@@ -18,13 +19,15 @@ func Router () http.Handler {
 
 	mux.HandleFunc(constants.ROUTE_GET_AUTH_SAMPLE, models.Authenticate(SampleAuth))
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
-	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, LearnAbout)
-	mux.HandleFunc(constants.ROUTE_GET_TOPIC, GetTopic)
-	mux.HandleFunc(constants.ROUTE_GET_COURSES, GetCourses)
-	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, ChapterImage)
-	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, ReadingProgressHandler)
-	mux.HandleFunc(constants.ROUTE_GET_SUBJECTS, SubjectsHandler)
-	mux.HandleFunc(constants.ROUTE_GET_COURSE_SUBJECTS, CourseSubjectsHandler)
+	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, models.Authenticate(LearnAbout))
+	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
+	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
+	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
+	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
+	mux.HandleFunc(constants.ROUTE_GET_SUBJECTS, models.Authenticate(SubjectsHandler))
+	mux.HandleFunc("PUT /api/subjects/{id}", models.Authenticate(PutSubject))
+	mux.HandleFunc("DELETE /api/subjects/{id}", models.Authenticate(DeleteSubject))
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_SUBJECTS, models.Authenticate(CourseSubjectsHandler))
 
 	// serve generated research data (e.g. chapter images) from the data directory
 	mux.Handle(
@@ -40,9 +43,8 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_SIGNUP, Signup)
 	mux.HandleFunc(constants.ROUTE_POST_LOGIN, Login)
 
-	// lesson chat routes
-	mux.HandleFunc(constants.ROUTE_GET_CHAT, models.Authenticate(GetChatMessages))
-	mux.HandleFunc(constants.ROUTE_POST_CHAT, models.Authenticate(CreateChatMessage))
+	// lesson chat routes (GET and POST share the same path)
+	mux.HandleFunc(constants.ROUTE_GET_CHAT, models.Authenticate(ChatHandler))
 
 
 	// Serve static files from the frontend build
@@ -119,6 +121,12 @@ func SamplePub(w http.ResponseWriter, r *http.Request) {
 * the progress back to the client using Server-Sent Events.
 *********************************************************************/
 func LearnAbout(w http.ResponseWriter, r *http.Request) {
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
 	var research models.Research
 
 	err := json.NewDecoder(r.Body).Decode(&research)
@@ -136,6 +144,8 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "at least one subject is required", http.StatusBadRequest)
 		return
 	}
+
+	research.UserID = authUser.Id
 
 	// configure the response as a Server-Sent Events stream
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -178,7 +188,7 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// attach the selected subjects to the newly created course
-	if err := models.SetCourseSubjects(name, research.SubjectIDs); err != nil {
+	if err := models.SetCourseSubjects(authUser.Id, name, research.SubjectIDs); err != nil {
 		sendEvent("error", fmt.Sprintf("%v", err))
 		return
 	}
@@ -194,7 +204,16 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 func GetCourses(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
-	courses, err := models.ListCourses()
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	courses, err := models.ListCourses(authUser.Id)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -283,6 +302,15 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 func GetTopic(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
 	name := r.URL.Query().Get("name")
 	if strings.TrimSpace(name) == "" {
 		httpResponse.Error = "topic name is required"
@@ -292,7 +320,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	research := models.Research{Title: name}
+	research := models.Research{Title: name, UserID: authUser.Id}
 	content, err := research.ReadContent()
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
@@ -305,7 +333,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 	httpResponse.Data = map[string]interface{}{
 		"topic":          name,
 		"content":        content,
-		"coverImagePath": models.GetCoverImagePath(name),
+		"coverImagePath": models.GetCoverImagePath(authUser.Id, name),
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
@@ -319,6 +347,15 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 *********************************************************************/
 func ChapterImage(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	var requestBody struct {
 		Topic   string `json:"topic"`
@@ -342,7 +379,7 @@ func ChapterImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	research := models.Research{Title: requestBody.Topic}
+	research := models.Research{Title: requestBody.Topic, UserID: authUser.Id}
 	err = research.GenerateChapterImage(requestBody.Chapter)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
@@ -371,10 +408,19 @@ func ChapterImage(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Returns the list of chapters that have been marked as read for a course.
+* Returns the list of chapters that have been marked as read for a user's course.
 *********************************************************************/
 func GetReadingProgress(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	course := r.URL.Query().Get("course")
 	if strings.TrimSpace(course) == "" {
@@ -385,7 +431,7 @@ func GetReadingProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chapters, err := models.GetReadChapters(course)
+	chapters, err := models.GetReadChapters(authUser.Id, course)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -401,10 +447,19 @@ func GetReadingProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Marks a chapter as read or unread for a course.
+* Marks a chapter as read or unread for a user's course.
 *********************************************************************/
 func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	var requestBody struct {
 		Course  string `json:"course"`
@@ -429,7 +484,7 @@ func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = models.SaveReadingProgress(requestBody.Course, requestBody.Chapter, requestBody.Read)
+	err = models.SaveReadingProgress(authUser.Id, requestBody.Course, requestBody.Chapter, requestBody.Read)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -461,12 +516,21 @@ func ReadingProgressHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Lists all subjects.
+* Lists all subjects for the authenticated user.
 *********************************************************************/
 func GetSubjects(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
-	subjects, err := models.ListSubjects()
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	subjects, err := models.ListSubjects(authUser.Id)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -482,10 +546,19 @@ func GetSubjects(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Creates a new subject.
+* Creates a new subject for the authenticated user.
 *********************************************************************/
 func PostSubjects(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	var subject models.Subject
 	err := json.NewDecoder(r.Body).Decode(&subject)
@@ -497,7 +570,7 @@ func PostSubjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = subject.Create()
+	err = subject.Create(authUser.Id)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -513,10 +586,19 @@ func PostSubjects(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Returns the subjects attached to a course.
+* Returns the subjects attached to a course for the authenticated user.
 *********************************************************************/
 func GetCourseSubjects(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	course := r.URL.Query().Get("course")
 	if strings.TrimSpace(course) == "" {
@@ -527,7 +609,7 @@ func GetCourseSubjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subjects, err := models.GetCourseSubjects(course)
+	subjects, err := models.GetCourseSubjects(authUser.Id, course)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -547,6 +629,15 @@ func GetCourseSubjects(w http.ResponseWriter, r *http.Request) {
 *********************************************************************/
 func PostCourseSubjects(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
 
 	var requestBody struct {
 		Course     string `json:"course"`
@@ -569,7 +660,7 @@ func PostCourseSubjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = models.SetCourseSubjects(requestBody.Course, requestBody.SubjectIDs)
+	err = models.SetCourseSubjects(authUser.Id, requestBody.Course, requestBody.SubjectIDs)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -579,6 +670,95 @@ func PostCourseSubjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpResponse.Data = map[string]string{"message": "Course subjects updated"}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Updates an existing subject for the authenticated user.
+*********************************************************************/
+func PutSubject(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		httpResponse.Error = "invalid subject id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var subject models.Subject
+	if err := json.NewDecoder(r.Body).Decode(&subject); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+	subject.ID = id
+
+	if err := subject.Update(authUser.Id); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Subject updated"}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Deletes a subject for the authenticated user.
+*********************************************************************/
+func DeleteSubject(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		httpResponse.Error = "invalid subject id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	subject := models.Subject{ID: id}
+	if err := subject.Delete(authUser.Id); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Subject deleted"}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
@@ -898,6 +1078,20 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request){
 	httpResponse.Send(w)
 }
 
+
+/************************************************************************
+* Dispatches chat requests to the correct method handler.
+************************************************************************/
+func ChatHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		GetChatMessages(w, r)
+	case http.MethodPost:
+		CreateChatMessage(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
 
 /************************************************************************
 * Returns all chat messages for a course in chronological order.

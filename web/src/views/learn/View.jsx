@@ -15,6 +15,7 @@ import {
 } from "@constants";
 import { splitChapters } from "./splitChapters";
 import { ChatPanel } from "./ChatPanel";
+import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
 // turns a chapter title into a DOM id that can be used as an anchor target
@@ -55,15 +56,19 @@ export const LearnView = () => {
           await Promise.all([
             fetch(`${API_GET_TOPIC}?name=${encodeURIComponent(topic)}`, {
               signal: controller.signal,
+              headers: authHeaders(),
             }),
             fetch(
               `${API_GET_READING_PROGRESS}?course=${encodeURIComponent(topic)}`,
-              { signal: controller.signal },
+              { signal: controller.signal, headers: authHeaders() },
             ),
-            fetch(API_GET_SUBJECTS, { signal: controller.signal }),
+            fetch(API_GET_SUBJECTS, {
+              signal: controller.signal,
+              headers: authHeaders(),
+            }),
             fetch(
               `${API_GET_COURSE_SUBJECTS}?course=${encodeURIComponent(topic)}`,
-              { signal: controller.signal },
+              { signal: controller.signal, headers: authHeaders() },
             ),
           ]);
         const topicResult = await topicRes.json();
@@ -112,7 +117,7 @@ export const LearnView = () => {
     try {
       const res = await fetch(API_POST_CHAPTER_IMAGE, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ topic, chapter }),
       });
       const result = await res.json();
@@ -166,7 +171,7 @@ export const LearnView = () => {
     try {
       await fetch(API_POST_READING_PROGRESS, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ course: topic, chapter, read: nextRead }),
       });
       showToast({
@@ -211,7 +216,7 @@ export const LearnView = () => {
     try {
       await fetch(API_POST_COURSE_SUBJECTS, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({
           course: topic,
           subjectIds: Array.from(nextIds),

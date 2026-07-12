@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Loading, Input, Thumbnail } from "@ds";
+import { Loading, Input, Select, Thumbnail } from "@ds";
 import { API_GET_COURSES, API_GET_SUBJECTS, ROUTE_LEARN } from "@constants";
 import { useGet } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -71,7 +71,56 @@ export const CoursesView = () => {
     : API_GET_COURSES;
 
   const { data, loading, error } = useGet({ url: searchUrl });
-  const courses = data || [];
+  const courses = useMemo(() => data || [], [data]);
+
+  // Fetch the full, unfiltered course list so year/month filter tags always remain visible
+  // regardless of other active filters.
+  const { data: allCoursesData } = useGet({ url: API_GET_COURSES });
+  const allCourses = useMemo(() => allCoursesData || [], [allCoursesData]);
+
+  const [sortBy, setSortBy] = useState(() => {
+    if (typeof window === "undefined") return "lastRead";
+    return window.localStorage.getItem("coursesSort") || "lastRead";
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("coursesSort", sortBy);
+    }
+  }, [sortBy]);
+
+  const sortedCourses = useMemo(() => {
+    const sorted = [...courses];
+    switch (sortBy) {
+      case "title":
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "created":
+        sorted.sort((a, b) => {
+          const aDate = a.createdAt ? new Date(a.createdAt) : new Date(0);
+          const bDate = b.createdAt ? new Date(b.createdAt) : new Date(0);
+          return bDate - aDate;
+        });
+        break;
+      case "lastRead":
+      default:
+        sorted.sort((a, b) => {
+          const aDate = a.lastReadAt
+            ? new Date(a.lastReadAt)
+            : a.createdAt
+              ? new Date(a.createdAt)
+              : new Date(0);
+          const bDate = b.lastReadAt
+            ? new Date(b.lastReadAt)
+            : b.createdAt
+              ? new Date(b.createdAt)
+              : new Date(0);
+          return bDate - aDate;
+        });
+        break;
+    }
+    return sorted;
+  }, [courses, sortBy]);
 
   useEffect(() => {
     if (error) {
@@ -81,12 +130,12 @@ export const CoursesView = () => {
 
   const availableYears = useMemo(() => {
     const years = new Set();
-    courses.forEach((c) => {
+    allCourses.forEach((c) => {
       const d = c.createdAt ? new Date(c.createdAt) : null;
       if (d && !isNaN(d)) years.add(d.getFullYear());
     });
     return Array.from(years).sort((a, b) => a - b);
-  }, [courses]);
+  }, [allCourses]);
 
   const toggleInSet = (set, setFn, value) => {
     const next = new Set(set);
@@ -117,10 +166,27 @@ export const CoursesView = () => {
 
   return (
     <section>
-      <h1 className='mb-1 text-2xl font-bold text-dr-text'>Courses</h1>
-      <p className='mb-6 text-sm text-dr-text-muted'>
-        Every topic you have researched so far.
-      </p>
+      <div className='mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
+        <div>
+          <h1 className='mb-1 text-2xl font-bold text-dr-text'>Courses</h1>
+          <p className='text-sm text-dr-text-muted'>
+            Every topic you have researched so far.
+          </p>
+        </div>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm text-dr-text-muted'>Sort by</span>
+          <Select
+            value={sortBy}
+            onChange={(val) => setSortBy(val)}
+            options={[
+              { value: "lastRead", label: "Last read" },
+              { value: "title", label: "Title" },
+              { value: "created", label: "Date created" },
+            ]}
+            className='min-w-[9rem]'
+          />
+        </div>
+      </div>
 
       <div className='mb-4'>
         <Input
@@ -237,7 +303,7 @@ export const CoursesView = () => {
 
       {!loading && courses.length > 0 && (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {courses.map((course, index) => (
+          {sortedCourses.map((course, index) => (
             <Link
               key={course.id}
               to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}

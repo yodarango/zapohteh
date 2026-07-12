@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"goilerplate/internal/utils"
 	"regexp"
 	"strings"
 )
@@ -36,9 +35,9 @@ func (s *Subject) Validate() error {
 }
 
 /**************************************************************************************
-* Create persists a new subject to the database.
+* Create persists a new subject for a user to the database.
 **************************************************************************************/
-func (s *Subject) Create() error {
+func (s *Subject) Create(userId uint) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
@@ -46,7 +45,8 @@ func (s *Subject) Create() error {
 		return fmt.Errorf("database is not available")
 	}
 	_, err := ModelsRepo.DB.Conn.Exec(
-		"INSERT INTO subjects (name, description, color) VALUES (?, ?, ?)",
+		"INSERT INTO subjects (user_id, name, description, color) VALUES (?, ?, ?, ?)",
+		userId,
 		strings.TrimSpace(s.Name),
 		strings.TrimSpace(s.Description),
 		strings.TrimSpace(s.Color),
@@ -55,13 +55,16 @@ func (s *Subject) Create() error {
 }
 
 /**************************************************************************************
-* ListSubjects returns every subject stored in the database.
+* ListSubjects returns every subject belonging to a user.
 **************************************************************************************/
-func ListSubjects() ([]Subject, error) {
+func ListSubjects(userId uint) ([]Subject, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return []Subject{}, nil
 	}
-	rows, err := ModelsRepo.DB.Conn.Query("SELECT id, name, description, color FROM subjects ORDER BY name")
+	rows, err := ModelsRepo.DB.Conn.Query(
+		"SELECT id, name, description, color FROM subjects WHERE user_id = ? ORDER BY name",
+		userId,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -79,91 +82,64 @@ func ListSubjects() ([]Subject, error) {
 }
 
 /**************************************************************************************
-* GetCourseSubjects returns the subjects attached to a course.
+* Update modifies an existing subject that belongs to the authenticated user.
 **************************************************************************************/
-func GetCourseSubjects(courseTitle string) ([]Subject, error) {
-	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
-		return []Subject{}, nil
+func (s *Subject) Update(userId uint) error {
+	if err := s.Validate(); err != nil {
+		return err
 	}
-	rows, err := ModelsRepo.DB.Conn.Query(`
-		SELECT s.id, s.name, s.description, s.color
-		FROM subjects s
-		JOIN course_subjects cs ON cs.subject_id = s.id
-		WHERE cs.course_title = ?
-		ORDER BY s.name
-	`, courseTitle)
-	if err != nil {
-		return nil, err
+	if s.ID == 0 {
+		return fmt.Errorf("subject id is required")
 	}
-	defer rows.Close()
-
-	subjects := []Subject{}
-	for rows.Next() {
-		var s Subject
-		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.Color); err != nil {
-			return nil, err
-		}
-		subjects = append(subjects, s)
-	}
-	return subjects, nil
-}
-
-/**************************************************************************************
-* SetCourseSubjects replaces the subject attachments for a course with the given
-* subject ids.
-**************************************************************************************/
-func SetCourseSubjects(courseTitle string, subjectIDs []int) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
-	tx, err := ModelsRepo.DB.Conn.Begin()
+	result, err := ModelsRepo.DB.Conn.Exec(
+		"UPDATE subjects SET name = ?, description = ?, color = ? WHERE id = ? AND user_id = ?",
+		strings.TrimSpace(s.Name),
+		strings.TrimSpace(s.Description),
+		strings.TrimSpace(s.Color),
+		s.ID,
+		userId,
+	)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec("DELETE FROM course_subjects WHERE course_title = ?", courseTitle); err != nil {
-		tx.Rollback()
+	rows, err := result.RowsAffected()
+	if err != nil {
 		return err
 	}
-	for _, id := range subjectIDs {
-		if _, err := tx.Exec(
-			"INSERT INTO course_subjects (course_title, subject_id) VALUES (?, ?)",
-			courseTitle, id,
-		); err != nil {
-			tx.Rollback()
-			return err
-		}
+	if rows == 0 {
+		return fmt.Errorf("subject not found or not authorized")
 	}
-	return tx.Commit()
+	return nil
 }
 
 /**************************************************************************************
-* SubjectColorMap returns a map of course title -> list of subjects for every course
-* that has at least one subject attached.
+* Delete removes a subject that belongs to the authenticated user.
 **************************************************************************************/
-func SubjectColorMap() (map[string][]Subject, error) {
-	m := make(map[string][]Subject)
+func (s *Subject) Delete(userId uint) error {
+	if s.ID == 0 {
+		return fmt.Errorf("subject id is required")
+	}
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
-		return m, nil
+		return fmt.Errorf("database is not available")
 	}
-	rows, err := ModelsRepo.DB.Conn.Query(`
-		SELECT cs.course_title, s.id, s.name, s.description, s.color
-		FROM course_subjects cs
-		JOIN subjects s ON s.id = cs.subject_id
-		ORDER BY cs.course_title, s.name
-	`)
+	result, err := ModelsRepo.DB.Conn.Exec(
+		"DELETE FROM subjects WHERE id = ? AND user_id = ?",
+		s.ID,
+		userId,
+	)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var courseTitle string
-		var s Subject
-		if err := rows.Scan(&courseTitle, &s.ID, &s.Name, &s.Description, &s.Color); err != nil {
-			return nil, err
-		}
-		key := utils.SanitizeFilename(courseTitle)
-		m[key] = append(m[key], s)
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
 	}
-	return m, nil
+	if rows == 0 {
+		return fmt.Errorf("subject not found or not authorized")
+	}
+	return nil
 }
+

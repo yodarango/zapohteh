@@ -3,9 +3,9 @@ import { createPortal } from "react-dom";
 import { If } from "@ds";
 
 const typeStyles = {
-  success: "border-dr-success bg-dr-success/10 text-dr-success",
-  danger: "border-dr-danger bg-dr-danger/10 text-dr-danger",
-  warning: "border-dr-warning bg-dr-warning/10 text-dr-text",
+  success: "border-[#16c098] bg-[#ecf8f4] text-[#16c098]",
+  danger: "border-[#ef4d63] bg-[#feedef] text-[#ef4d63]",
+  warning: "border-[#efa44d] bg-[#fef9ed] text-[#efa44d]",
   info: "border-dr-info bg-dr-info/10 text-dr-info",
   default: "border-dr-border bg-dr-surface text-dr-text",
 };
@@ -22,7 +22,7 @@ export const Toast = (props) => {
 
   const toastContent = (
     <div
-      className={`fixed left-1/2 top-20 w-[92%] max-w-[50rem] -translate-x-1/2 rounded-2xl border text-dr-text flex items-center justify-start gap-3 ${closeClass} ${cardClass}`}
+      className={`fixed left-1/2 top-20 w-[92%] max-w-[50rem] -translate-x-1/2 rounded-2xl border flex items-center justify-start gap-3 ${closeClass} ${cardClass}`}
       style={{ zIndex, ...props.style }}
     >
       {icon && (

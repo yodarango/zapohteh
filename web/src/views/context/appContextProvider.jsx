@@ -13,7 +13,7 @@ export const AppContextProvider = (props) => {
     setState((prevState) =>
       update(prevState, {
         isModalOpen: { $set: !prevState.isModalOpen },
-      })
+      }),
     );
   }
 
@@ -41,7 +41,7 @@ export const AppContextProvider = (props) => {
             isLoading: { $set: false },
             user: { $set: userData },
             auth: { $set: token },
-          })
+          }),
         );
       }
     }
@@ -77,7 +77,7 @@ export const AppContextProvider = (props) => {
         isAuthenticated: { $set: false },
         auth: { $set: {} },
         user: { $set: {} },
-      })
+      }),
     );
   }
 
@@ -86,7 +86,7 @@ export const AppContextProvider = (props) => {
     setState((prevState) =>
       update(prevState, {
         toast: { $set: toast },
-      })
+      }),
     );
   }, []);
 
@@ -95,7 +95,7 @@ export const AppContextProvider = (props) => {
     setState((prevState) =>
       update(prevState, {
         toast: { $set: null },
-      })
+      }),
     );
   }, []);
 
@@ -115,7 +115,7 @@ export const AppContextProvider = (props) => {
       }}
     >
       <Toast
-        style={{ zIndex: state.toast?.zIndex || 15 }}
+        style={{ zIndex: state.toast?.zIndex || 100 }}
         onClose={handleHideToast}
         type={state.toast?.type}
         open={!!state.toast}
