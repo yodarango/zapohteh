@@ -336,7 +336,7 @@ export const CoursesView = () => {
 
               <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
                 <span>Created: {formatLocalTime(course.createdAt)}</span>
-                {course.lastReadAt && (
+                {course.lastReadAt && !course.completedAt && (
                   <span>Last read: {formatLocalTime(course.lastReadAt)}</span>
                 )}
                 {course.completedAt && (

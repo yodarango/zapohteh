@@ -16,7 +16,7 @@ const GENERAL = [
   { label: "Subjects", icon: "pricetag-outline", to: ROUTE_SUBJECTS },
 ];
 
-const NavItem = ({ item }) => {
+const NavItem = ({ item, onClick }) => {
   const base =
     "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors";
 
@@ -35,6 +35,7 @@ const NavItem = ({ item }) => {
     <NavLink
       to={item.to}
       end
+      onClick={onClick}
       className={({ isActive }) =>
         `${base} ${
           isActive
@@ -55,7 +56,7 @@ const SectionLabel = ({ children }) => (
   </p>
 );
 
-export const Sidebar = () => {
+export const Sidebar = ({ onClose, className = "" }) => {
   const navigate = useNavigate();
   const { state, logout } = useAppContext();
   const user = state?.user || {};
@@ -64,7 +65,20 @@ export const Sidebar = () => {
   const chosenAvatar = avatars.find((a) => a.pathName === user.avatar) || {};
 
   return (
-    <aside className='flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm'>
+    <aside className={`flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm ${className}`}>
+      {/* Mobile close button */}
+      {onClose && (
+        <div className='flex items-center justify-end px-5 pt-4 md:hidden'>
+          <button
+            type='button'
+            onClick={onClose}
+            className='flex h-8 w-8 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
+          >
+            <ion-icon name='close-outline' className='text-xl'></ion-icon>
+          </button>
+        </div>
+      )}
+
       {/* Brand */}
       <div className='flex items-center gap-2 px-5 py-5'>
         <img
@@ -80,7 +94,7 @@ export const Sidebar = () => {
         <SectionLabel>General</SectionLabel>
         <div className='flex flex-col gap-1'>
           {GENERAL.map((item) => (
-            <NavItem key={item.label} item={item} />
+            <NavItem key={item.label} item={item} onClick={onClose} />
           ))}
         </div>
       </nav>
@@ -90,7 +104,10 @@ export const Sidebar = () => {
         <NavItem item={{ label: "Settings", icon: "settings-outline" }} />
         <button
           type='button'
-          onClick={() => navigate(ROUTE_USERS_ME)}
+          onClick={() => {
+            if (onClose) onClose();
+            navigate(ROUTE_USERS_ME);
+          }}
           className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-dr-surface-light'
         >
           <div className='flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-sm font-semibold text-dr-accent'>

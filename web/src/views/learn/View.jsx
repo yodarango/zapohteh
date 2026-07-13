@@ -94,7 +94,10 @@ export const LearnView = () => {
           setSubjects(subjectsResult.data);
         }
 
-        if (courseSubjectsResult.data && Array.isArray(courseSubjectsResult.data)) {
+        if (
+          courseSubjectsResult.data &&
+          Array.isArray(courseSubjectsResult.data)
+        ) {
           setCourseSubjectIds(
             new Set(courseSubjectsResult.data.map((s) => s.id)),
           );
@@ -313,9 +316,13 @@ export const LearnView = () => {
   };
 
   return (
-    <div className='flex h-full gap-8'>
-      <div className='min-w-0 flex-1 max-w-[800px] overflow-y-auto px-4 py-8'>
-        <Button secondary className='mb-6' onClick={() => navigate(ROUTE_COURSES)}>
+    <div className='flex h-full gap-8 overflow-x-hidden'>
+      <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)]'>
+        <Button
+          secondary
+          className='mb-6'
+          onClick={() => navigate(ROUTE_COURSES)}
+        >
           <ion-icon name='arrow-back-outline'></ion-icon>
           <span className='ml-2'>Back</span>
         </Button>
@@ -331,7 +338,9 @@ export const LearnView = () => {
         {chapters.length > 0 && (
           <div className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
             <div className='mb-2 flex items-center justify-between text-sm'>
-              <span className='font-semibold text-dr-text'>Reading progress</span>
+              <span className='font-semibold text-dr-text'>
+                Reading progress
+              </span>
               <span className='text-dr-text-muted'>
                 {readChapters.size} of {chapters.length} chapters ({progress}%)
               </span>
@@ -362,9 +371,6 @@ export const LearnView = () => {
             >
               {/* chapter heading with its summary image action */}
               <div className='mb-3 flex items-start justify-between gap-4'>
-                <h2 className='text-xl font-bold text-dr-text'>
-                  {chapter.title}
-                </h2>
                 <div className='flex shrink-0 items-center gap-2'>
                   <button
                     type='button'
@@ -395,7 +401,7 @@ export const LearnView = () => {
                     ) : (
                       <>
                         <ion-icon name='image-outline'></ion-icon>
-                        <span className='ml-2'>Create summary image</span>
+                        <span className='ml-2'>Img Summary</span>
                       </>
                     )}
                   </Button>
@@ -410,7 +416,7 @@ export const LearnView = () => {
         })}
       </div>
 
-      <div className='hidden h-full w-64 shrink-0 overflow-y-auto lg:block sticky top-0 self-start border-l border-dr-border pl-4'>
+      <div className='hidden h-full overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4'>
         {chapters.length > 0 && (
           <div className='py-4'>
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
@@ -441,7 +447,7 @@ export const LearnView = () => {
                           className='shrink-0 text-dr-text-muted'
                         />
                       )}
-                      <span className='line-clamp-1'>{chapter.title}</span>
+                      <span>{chapter.title}</span>
                     </button>
                   </li>
                 );
@@ -485,11 +491,7 @@ export const LearnView = () => {
                           ? "border-white bg-white"
                           : "border-current bg-transparent"
                       }`}
-                      style={
-                        selected
-                          ? {}
-                          : { borderColor: subject.color }
-                      }
+                      style={selected ? {} : { borderColor: subject.color }}
                     />
                     <span className='line-clamp-1'>{subject.name}</span>
                   </button>

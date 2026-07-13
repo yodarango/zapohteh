@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_GET_COURSES, ROUTE_LEARN } from "@constants";
 import { authHeaders } from "@utils";
+import zapohtehLogo from "../../../../public/logo.webp";
 
-export const Topbar = () => {
+export const Topbar = ({ onMenuToggle }) => {
   const navigate = useNavigate();
   const containerRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -64,51 +65,73 @@ export const Topbar = () => {
   };
 
   return (
-    <header className='flex items-center justify-end gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
+    <header className='flex items-center justify-between gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
+      {/* Mobile hamburger */}
       <button
         type='button'
-        className='flex items-center gap-2 text-sm font-medium text-dr-text-muted transition-colors hover:text-dr-text'
+        onClick={onMenuToggle}
+        className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light md:hidden'
       >
-        <ion-icon name='notifications-outline' className='text-lg'></ion-icon>
-        <span className='hidden sm:inline'>Notifications</span>
+        <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
       </button>
 
-      <div ref={containerRef} className='relative w-full max-w-xs'>
-        <ion-icon
-          name='search-outline'
-          className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dr-text-muted'
-        ></ion-icon>
-        <input
-          type='search'
-          placeholder='Search courses'
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className='w-full rounded-xl border border-dr-border bg-dr-surface-light py-2 pl-9 pr-3 text-sm text-dr-text outline-none transition-colors placeholder:text-dr-text-muted focus:border-dr-accent'
+      {/* Desktop search + notifications */}
+      <div className='hidden items-center gap-4 md:flex'>
+        <button
+          type='button'
+          className='flex items-center gap-2 text-sm font-medium text-dr-text-muted transition-colors hover:text-dr-text'
+        >
+          <ion-icon name='notifications-outline' className='text-lg'></ion-icon>
+          <span className='hidden sm:inline'>Notifications</span>
+        </button>
+
+        <div ref={containerRef} className='relative w-full max-w-xs'>
+          <ion-icon
+            name='search-outline'
+            className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dr-text-muted'
+          ></ion-icon>
+          <input
+            type='search'
+            placeholder='Search courses'
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className='w-full rounded-xl border border-dr-border bg-dr-surface-light py-2 pl-9 pr-3 text-sm text-dr-text outline-none transition-colors placeholder:text-dr-text-muted focus:border-dr-accent'
+          />
+          {showResults && (
+            <div className='absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-dr-border bg-dr-surface shadow-lg'>
+              {results.length === 0 ? (
+                <div className='px-3 py-2 text-sm text-dr-text-muted'>
+                  No results
+                </div>
+              ) : (
+                results.map((course) => (
+                  <button
+                    key={course.id}
+                    type='button'
+                    onClick={() => handleSelect(course)}
+                    className='flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-dr-text hover:bg-dr-surface-light'
+                  >
+                    <ion-icon
+                      name='book-outline'
+                      className='text-dr-text-muted'
+                    ></ion-icon>
+                    <span className='truncate'>{course.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile brand icon */}
+      <div className='flex items-center gap-2 md:hidden'>
+        <img
+          src={zapohtehLogo}
+          alt='Logo'
+          className='h-8 w-8 rounded-lg object-contain'
         />
-        {showResults && (
-          <div className='absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-dr-border bg-dr-surface shadow-lg'>
-            {results.length === 0 ? (
-              <div className='px-3 py-2 text-sm text-dr-text-muted'>
-                No results
-              </div>
-            ) : (
-              results.map((course) => (
-                <button
-                  key={course.id}
-                  type='button'
-                  onClick={() => handleSelect(course)}
-                  className='flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-dr-text hover:bg-dr-surface-light'
-                >
-                  <ion-icon
-                    name='book-outline'
-                    className='text-dr-text-muted'
-                  ></ion-icon>
-                  <span className='truncate'>{course.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
+        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
       </div>
     </header>
   );
