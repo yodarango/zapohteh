@@ -65,7 +65,11 @@ export const Select = ({
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const insideTrigger =
+        containerRef.current && containerRef.current.contains(e.target);
+      const insideDropdown =
+        listRef.current && listRef.current.contains(e.target);
+      if (!insideTrigger && !insideDropdown) {
         setIsOpen(false);
       }
     };

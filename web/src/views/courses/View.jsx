@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Loading, Input, Select, Thumbnail } from "@ds";
 import { API_GET_COURSES, API_GET_SUBJECTS, ROUTE_LEARN } from "@constants";
-import { useGet } from "@utils";
+import { useGet, formatLocalTime } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
 const MONTHS = [
@@ -332,6 +332,18 @@ export const CoursesView = () => {
                   name='arrow-forward-outline'
                   className='shrink-0 text-dr-text-muted transition-colors group-hover:text-dr-accent'
                 ></ion-icon>
+              </div>
+
+              <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
+                <span>Created: {formatLocalTime(course.createdAt)}</span>
+                {course.lastReadAt && (
+                  <span>Last read: {formatLocalTime(course.lastReadAt)}</span>
+                )}
+                {course.completedAt && (
+                  <span className='text-dr-success'>
+                    Completed: {formatLocalTime(course.completedAt)}
+                  </span>
+                )}
               </div>
 
               {course.totalChapters > 0 && (

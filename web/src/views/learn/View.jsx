@@ -417,17 +417,35 @@ export const LearnView = () => {
               Chapters
             </h3>
             <ul className='flex flex-col gap-1'>
-              {chapters.map((chapter) => (
-                <li key={chapter.title}>
-                  <button
-                    type='button'
-                    onClick={() => scrollToChapter(chapter.title)}
-                    className='w-full rounded-lg px-2 py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text'
-                  >
-                    {chapter.title}
-                  </button>
-                </li>
-              ))}
+              {chapters.map((chapter) => {
+                const isRead = readChapters.has(chapter.title);
+                return (
+                  <li key={chapter.title}>
+                    <button
+                      type='button'
+                      onClick={() => scrollToChapter(chapter.title)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                        isRead
+                          ? "text-dr-success"
+                          : "text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
+                      }`}
+                    >
+                      {isRead ? (
+                        <ion-icon
+                          name='checkmark-circle'
+                          className='shrink-0'
+                        />
+                      ) : (
+                        <ion-icon
+                          name='ellipse-outline'
+                          className='shrink-0 text-dr-text-muted'
+                        />
+                      )}
+                      <span className='line-clamp-1'>{chapter.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

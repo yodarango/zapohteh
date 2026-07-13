@@ -10,11 +10,15 @@ import (
 
 // CourseDB represents a single course row in the database.
 type CourseDB struct {
-	ID        int       `json:"id"`
-	UserID    uint      `json:"userId"`
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID                      int        `json:"id"`
+	UserID                  uint       `json:"userId"`
+	Title                   string     `json:"title"`
+	Description             *string    `json:"description"`
+	CoverImageDescription   *string    `json:"coverImageDescription"`
+	CoverImagePath          *string    `json:"coverImagePath"`
+	CreatedAt               time.Time  `json:"createdAt"`
+	UpdatedAt               time.Time  `json:"updatedAt"`
+	CompletedAt             *time.Time `json:"completedAt"`
 }
 
 // EnsureCourse creates a course row for a user if it does not already exist and

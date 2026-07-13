@@ -1,6 +1,7 @@
 package models
 
 import (
+	"database/sql"
 	"fmt"
 	"net/url"
 	"os"
@@ -105,25 +106,26 @@ type Course struct {
 	Subjects       []Subject  `json:"subjects"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	LastReadAt     *time.Time `json:"lastReadAt"`
+	CompletedAt    *time.Time `json:"completedAt"`
 }
 
 /**************************************************************************************
-* GetCoverImagePath returns the stored cover image path for a research title and user,
+* GetCoverImagePath returns the stored cover image path for a course title and user,
 * or an empty string when none has been generated yet.
 **************************************************************************************/
 func GetCoverImagePath(userId uint, title string) string {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return ""
 	}
-	var path string
+	var path sql.NullString
 	err := ModelsRepo.DB.Conn.QueryRow(
-		"SELECT cover_image_path FROM research WHERE user_id = ? AND title = ?",
+		"SELECT cover_image_path FROM courses WHERE user_id = ? AND title = ?",
 		userId, title,
 	).Scan(&path)
-	if err != nil {
+	if err != nil || !path.Valid {
 		return ""
 	}
-	return path
+	return path.String
 }
 
 /**************************************************************************************
@@ -143,19 +145,28 @@ func ListCourses(userId uint) ([]Course, error) {
 
 	coverPaths := make(map[string]string)
 	createdAts := make(map[string]time.Time)
+	completedAts := make(map[string]*time.Time)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT title, cover_image_path, created_at FROM research WHERE user_id = ? AND cover_image_path != ''",
+			"SELECT title, cover_image_path, created_at, completed_at FROM courses WHERE user_id = ?",
 			userId,
 		)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
-				var title, path string
+				var title string
+				var path sql.NullString
 				var createdAt time.Time
-				if err := rows.Scan(&title, &path, &createdAt); err == nil {
-					coverPaths[utils.SanitizeFilename(title)] = path
-					createdAts[utils.SanitizeFilename(title)] = createdAt
+				var completedAt sql.NullTime
+				if err := rows.Scan(&title, &path, &createdAt, &completedAt); err == nil {
+					key := utils.SanitizeFilename(title)
+					if path.Valid && path.String != "" {
+						coverPaths[key] = path.String
+					}
+					createdAts[key] = createdAt
+					if completedAt.Valid {
+						completedAts[key] = &completedAt.Time
+					}
 				}
 			}
 		}
@@ -217,6 +228,7 @@ func ListCourses(userId uint) ([]Course, error) {
 			Subjects:       subjectMap[name],
 			CreatedAt:      createdAts[name],
 			LastReadAt:     lastReadAts[name],
+			CompletedAt:    completedAts[name],
 		})
 	}
 
@@ -706,11 +718,11 @@ func (r *Research) generateCoverImageDescription(title string) (string, error) {
 
 /**************************************************************************************
 * SaveCoverImageDescription stores the generated cover image description in the
-* research table, creating the row if it does not already exist.
+* courses table, creating the row if it does not already exist.
 **************************************************************************************/
 func (r *Research) SaveCoverImageDescription(title, description string) error {
 	query := `
-		INSERT INTO research (user_id, title, cover_image_description)
+		INSERT INTO courses (user_id, title, cover_image_description)
 		VALUES (?, ?, ?)
 		ON CONFLICT(user_id, title) DO UPDATE SET
 			cover_image_description = excluded.cover_image_description,
@@ -721,12 +733,12 @@ func (r *Research) SaveCoverImageDescription(title, description string) error {
 }
 
 /**************************************************************************************
-* SaveCoverImagePath stores the generated cover image path in the research table,
+* SaveCoverImagePath stores the generated cover image path in the courses table,
 * creating the row if it does not already exist.
 **************************************************************************************/
 func (r *Research) SaveCoverImagePath(title, path string) error {
 	query := `
-		INSERT INTO research (user_id, title, cover_image_path)
+		INSERT INTO courses (user_id, title, cover_image_path)
 		VALUES (?, ?, ?)
 		ON CONFLICT(user_id, title) DO UPDATE SET
 			cover_image_path = excluded.cover_image_path,
@@ -765,7 +777,8 @@ func GetReadChapters(userId uint, courseTitle string) ([]string, error) {
 }
 
 /**************************************************************************************
-* SaveReadingProgress marks a chapter as read or unread for a given user's course.
+* SaveReadingProgress marks a chapter as read or unread for a given user's course and
+* updates the course's completed_at timestamp when all chapters are read.
 **************************************************************************************/
 func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
@@ -782,7 +795,35 @@ func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) er
 	if read {
 		readFlag = 1
 	}
-	_, err := ModelsRepo.DB.Conn.Exec(query, userId, courseTitle, chapter, readFlag)
+	if _, err := ModelsRepo.DB.Conn.Exec(query, userId, courseTitle, chapter, readFlag); err != nil {
+		return err
+	}
+
+	// Update the course completion timestamp based on the current reading state.
+	folder := filepath.Join(dataDir, fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(courseTitle))
+	total := countChapters(folder)
+
+	var readCount int
+	err := ModelsRepo.DB.Conn.QueryRow(
+		"SELECT COUNT(*) FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1",
+		userId, courseTitle,
+	).Scan(&readCount)
+	if err != nil {
+		return err
+	}
+
+	isComplete := total > 0 && readCount == total
+	if isComplete {
+		_, err = ModelsRepo.DB.Conn.Exec(
+			"UPDATE courses SET completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP) WHERE user_id = ? AND title = ?",
+			userId, courseTitle,
+		)
+	} else {
+		_, err = ModelsRepo.DB.Conn.Exec(
+			"UPDATE courses SET completed_at = NULL WHERE user_id = ? AND title = ?",
+			userId, courseTitle,
+		)
+	}
 	return err
 }
 
