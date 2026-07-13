@@ -191,7 +191,7 @@ func ListCourses(userId uint) ([]Course, error) {
 		}
 
 		rows2, err2 := ModelsRepo.DB.Conn.Query(
-			"SELECT course_title, MAX(updated_at) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
+			"SELECT course_title, MAX(updated_at) FROM reading_progress WHERE user_id = ? GROUP BY course_title",
 			userId,
 		)
 		if err2 == nil {
