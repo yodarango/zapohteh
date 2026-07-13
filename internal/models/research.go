@@ -191,17 +191,19 @@ func ListCourses(userId uint) ([]Course, error) {
 		}
 
 		rows2, err2 := ModelsRepo.DB.Conn.Query(
-			"SELECT course_title, MAX(updated_at) FROM reading_progress WHERE user_id = ? GROUP BY course_title",
+			"SELECT course_title, MAX(updated_at) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
 			userId,
 		)
 		if err2 == nil {
 			defer rows2.Close()
 			for rows2.Next() {
 				var title string
-				var lastRead time.Time
-				if err := rows2.Scan(&title, &lastRead); err == nil {
-					sanitized := utils.SanitizeFilename(title)
-					lastReadAts[sanitized] = &lastRead
+				var lastRead sql.NullString
+				if err := rows2.Scan(&title, &lastRead); err == nil && lastRead.Valid {
+					if t, err := time.Parse("2006-01-02 15:04:05", lastRead.String); err == nil {
+						sanitized := utils.SanitizeFilename(title)
+						lastReadAts[sanitized] = &t
+					}
 				}
 			}
 		}
