@@ -317,7 +317,7 @@ export const LearnView = () => {
 
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
-      <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)]'>
+      <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
         <Button
           secondary
           className='mb-6'
@@ -416,7 +416,7 @@ export const LearnView = () => {
         })}
       </div>
 
-      <div className='hidden h-full overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4'>
+      <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
         {chapters.length > 0 && (
           <div className='py-4'>
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
@@ -457,8 +457,8 @@ export const LearnView = () => {
         )}
 
         {subjects.length > 0 && (
-          <div className='mt-4 rounded-2xl border border-dr-border bg-dr-surface p-4'>
-            <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+          <div className='mb-4'>
+            <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
               Subjects
             </h3>
             <div className='flex flex-wrap items-center gap-2'>
@@ -501,8 +501,8 @@ export const LearnView = () => {
           </div>
         )}
 
-        <div className='mt-4 rounded-2xl border border-dr-border bg-dr-surface p-4'>
-          <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+        <div className='mb-4'>
+          <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Actions
           </h3>
           <div className='flex flex-col gap-2'>

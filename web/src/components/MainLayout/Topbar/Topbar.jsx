@@ -70,13 +70,13 @@ export const Topbar = ({ onMenuToggle }) => {
       <button
         type='button'
         onClick={onMenuToggle}
-        className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light md:hidden'
+        className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light lg:hidden'
       >
         <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
       </button>
 
       {/* Desktop search + notifications */}
-      <div className='hidden items-center gap-4 md:flex'>
+      <div className='hidden items-center gap-4 lg:flex'>
         <button
           type='button'
           className='flex items-center gap-2 text-sm font-medium text-dr-text-muted transition-colors hover:text-dr-text'
@@ -125,7 +125,7 @@ export const Topbar = ({ onMenuToggle }) => {
       </div>
 
       {/* Mobile brand icon */}
-      <div className='flex items-center gap-2 md:hidden'>
+      <div className='flex items-center gap-2 lg:hidden'>
         <img
           src={zapohtehLogo}
           alt='Logo'

@@ -68,7 +68,7 @@ export const Sidebar = ({ onClose, className = "" }) => {
     <aside className={`flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm ${className}`}>
       {/* Mobile close button */}
       {onClose && (
-        <div className='flex items-center justify-end px-5 pt-4 md:hidden'>
+        <div className='flex items-center justify-end px-5 pt-4 lg:hidden'>
           <button
             type='button'
             onClick={onClose}

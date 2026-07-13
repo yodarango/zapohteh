@@ -60,7 +60,12 @@ export const ChatPanel = ({ topic, chapters }) => {
         });
         return;
       }
-      const userMsg = { role: "user", chapter, content: trimmed, id: Date.now() };
+      const userMsg = {
+        role: "user",
+        chapter,
+        content: trimmed,
+        id: Date.now(),
+      };
       const assistantMsg = result.data;
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setInput("");
@@ -75,14 +80,14 @@ export const ChatPanel = ({ topic, chapters }) => {
   };
 
   return (
-    <div className='mt-4 rounded-2xl border border-dr-border bg-dr-surface p-4'>
+    <div>
       <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-        AI assistant
+        Assistant
       </h3>
 
       <div className='mb-3'>
         <Select
-          label='Chapter'
+          label=''
           value={chapter}
           onChange={(val) => setChapter(val)}
           placeholder='Select a chapter'
@@ -94,9 +99,6 @@ export const ChatPanel = ({ topic, chapters }) => {
       </div>
 
       <div className='mb-3 max-h-48 overflow-y-auto'>
-        {messages.length === 0 && (
-          <p className='text-xs text-dr-text-muted'>No messages yet.</p>
-        )}
         {messages.map((msg, idx) => (
           <div
             key={msg.id || idx}
