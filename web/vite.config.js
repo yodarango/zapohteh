@@ -6,6 +6,8 @@ import path from "path";
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  // Load the root .env so TANJREEN_API_KEY can be used by the frontend build.
+  const rootEnv = loadEnv(mode, path.resolve(__dirname, ".."), "TANJREEN_");
   // Derive the backend origin from VITE_API_BASE (strip the trailing /api) so that
   // root-relative asset URLs like /data/<topic>/images/... can be proxied to the
   // Go server during development. In production both are served from one origin.
@@ -32,6 +34,14 @@ export default defineConfig(({ mode }) => {
         "@utils": path.resolve(__dirname, "./src/utils"),
         "@ds": path.resolve(__dirname, "./src/ds"),
       },
+    },
+    define: {
+      "import.meta.env.TANJREEN_API_URL": JSON.stringify(
+        rootEnv.TANJREEN_API_URL || "https://tanjreen.shrood.app/api/transform",
+      ),
+      "import.meta.env.TANJREEN_API_KEY": JSON.stringify(
+        rootEnv.TANJREEN_API_KEY || "",
+      ),
     },
     server: {
       proxy: backendOrigin

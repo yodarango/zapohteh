@@ -24,7 +24,7 @@ type AuthUser struct {
 
 /**************************************************************************************
 * generates a JWT token. Used primarily during the login and sign up process
-* 
+*
 * status: ✅
 ***************************************************************************************/
 func (user *AuthUser) GenerateJWT() (string, error) {
@@ -54,7 +54,7 @@ func (user *AuthUser) GenerateJWT() (string, error) {
 
 /**************************************************************************************
 * verifies that the token in the request is valid
-* 
+*
 * status: ✅
 **************************************************************************************/
 func VerifyToken(tokenString string) (*AuthUser, error) {
@@ -95,10 +95,10 @@ func VerifyToken(tokenString string) (*AuthUser, error) {
 
 
 /**************************************************************************************
-* I Will either return an error if not authenticated or continue with the request 
+* I Will either return an error if not authenticated or continue with the request
 * if it is. If the authentication is successful it will append the
 * decoded user to the request context.
-* 
+*
 * Status: ✅
 **************************************************************************************/
 func Authenticate(next http.HandlerFunc) http.HandlerFunc {
@@ -122,7 +122,7 @@ func Authenticate(next http.HandlerFunc) http.HandlerFunc {
 			response.Error = "You need to authenticate before accessing this resource"
 			response.Data = nil
 			response.Success = false
-			
+
 			response.Send(w)
 			return
 		}
@@ -131,5 +131,35 @@ func Authenticate(next http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), constants.USER_CONTEXT_AUTH_KEY, user)
 		next(w, r.WithContext(ctx))
 
+	}
+}
+
+/**************************************************************************************
+* AuthenticateAPIKey validates the API key provided either in the X-API-Key header or
+* the apiKey query parameter against the API_KEY environment variable. On success it
+* stores the key in the request context and calls the next handler.
+**************************************************************************************/
+func AuthenticateAPIKey(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		expectedKey := os.Getenv("API_KEY")
+		if expectedKey == "" {
+			http.Error(w, "API key is not configured on the server", http.StatusInternalServerError)
+			return
+		}
+
+		providedKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
+		if providedKey == "" {
+			providedKey = strings.TrimSpace(r.URL.Query().Get("apiKey"))
+		}
+
+		if providedKey == "" || providedKey != expectedKey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"success":false,"error":"Invalid or missing API key"}`))
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), constants.API_KEY_CONTEXT_KEY, providedKey)
+		next(w, r.WithContext(ctx))
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const openAIChatURL = "https://api.openai.com/v1/chat/completions"
@@ -300,3 +301,159 @@ func isTransientError(err error) bool {
 	}
 	return false
 }
+
+const openAITTSURL = "https://api.openai.com/v1/audio/speech"
+const openAITTSModel = "tts-1"
+
+/**************************************************************************************
+* TTS sends text to the OpenAI text-to-speech endpoint and returns the generated MP3
+* audio bytes. Input must be 4096 characters or fewer.
+**************************************************************************************/
+func (s *OpenAIService) TTS(text, voice string) ([]byte, error) {
+	if s.APIKey == "" {
+		return nil, fmt.Errorf("OpenAI API key is not configured")
+	}
+
+	if len(text) == 0 {
+		return nil, fmt.Errorf("TTS input is empty")
+	}
+
+	if utf8.RuneCountInString(text) > 4096 {
+		return nil, fmt.Errorf("TTS input exceeds 4096 characters")
+	}
+
+	reqBody := map[string]interface{}{
+		"model":           openAITTSModel,
+		"input":           text,
+		"voice":           voice,
+		"response_format": "mp3",
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal TTS request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, openAITTSURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TTS request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send TTS request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read TTS response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp struct {
+			Error *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error != nil {
+			return nil, fmt.Errorf("OpenAI TTS error: %s", errResp.Error.Message)
+		}
+		return nil, fmt.Errorf("OpenAI TTS returned status %d", resp.StatusCode)
+	}
+
+	return body, nil
+}
+
+type visionContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL *struct {
+		URL string `json:"url"`
+	} `json:"image_url,omitempty"`
+}
+
+type visionMessage struct {
+	Role    string              `json:"role"`
+	Content []visionContentPart `json:"content"`
+}
+
+type visionRequest struct {
+	Model    string          `json:"model"`
+	Messages []visionMessage `json:"messages"`
+}
+
+/**************************************************************************************
+* OCRImage sends an image to a vision-enabled OpenAI model and asks it to extract all
+* readable text. The returned string is the extracted text without commentary.
+**************************************************************************************/
+func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, error) {
+	if s.APIKey == "" {
+		return "", fmt.Errorf("OpenAI API key is not configured")
+	}
+
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
+	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Image)
+
+	reqBody := visionRequest{
+		Model: openAIModel,
+		Messages: []visionMessage{
+			{
+				Role: "system",
+				Content: []visionContentPart{
+					{Type: "text", Text: "Extract all readable text from the image. Return only the extracted text, with no commentary."},
+				},
+			},
+			{
+				Role: "user",
+				Content: []visionContentPart{
+					{Type: "text", Text: "Extract all text from this image."},
+					{Type: "image_url", ImageURL: &struct{ URL string `json:"url"` }{URL: dataURL}},
+				},
+			},
+		},
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal OCR request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, openAIChatURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return "", fmt.Errorf("failed to create OCR request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send OCR request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read OCR response: %w", err)
+	}
+
+	var chatResp chatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("failed to unmarshal OCR response: %w", err)
+	}
+
+	if chatResp.Error != nil {
+		return "", fmt.Errorf("OpenAI OCR error: %s", chatResp.Error.Message)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("OpenAI OCR returned no choices")
+	}
+
+	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
+}
+

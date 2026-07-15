@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,10 @@ func Router () http.Handler {
 	mux.HandleFunc("PUT /api/subjects/{id}", models.Authenticate(PutSubject))
 	mux.HandleFunc("DELETE /api/subjects/{id}", models.Authenticate(DeleteSubject))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_SUBJECTS, models.Authenticate(CourseSubjectsHandler))
+
+	// tanjreen audiobook transformation API (API key auth, separate from JWT UI auth)
+	mux.HandleFunc(constants.ROUTE_POST_TRANSFORM, models.AuthenticateAPIKey(Transform))
+	mux.HandleFunc(constants.ROUTE_GET_DOWNLOAD, models.AuthenticateAPIKey(DownloadAudiobook))
 
 	// serve generated research data (e.g. chapter images) from the data directory
 	mux.Handle(
@@ -140,11 +145,6 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(research.SubjectIDs) == 0 {
-		http.Error(w, "at least one subject is required", http.StatusBadRequest)
-		return
-	}
-
 	research.UserID = authUser.Id
 
 	// configure the response as a Server-Sent Events stream
@@ -187,10 +187,12 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 		name = research.Topic
 	}
 
-	// attach the selected subjects to the newly created course
-	if err := models.SetCourseSubjects(authUser.Id, name, research.SubjectIDs); err != nil {
-		sendEvent("error", fmt.Sprintf("%v", err))
-		return
+	// attach the selected subjects to the newly created course when provided
+	if len(research.SubjectIDs) > 0 {
+		if err := models.SetCourseSubjects(authUser.Id, name, research.SubjectIDs); err != nil {
+			sendEvent("error", fmt.Sprintf("%v", err))
+			return
+		}
 	}
 
 	sendEvent("done", map[string]string{"topic": name})
@@ -1210,4 +1212,101 @@ func containsInt(list []int, value int) bool {
 		}
 	}
 	return false
+}
+
+
+/************************************************************************
+* Transform accepts images, PDFs or raw text and converts them into a
+* single audiobook MP3. Progress is streamed back as Server-Sent Events.
+*********************************************************************/
+func Transform(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	req, err := models.NewAudiobookRequestFromHTTP(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+		return
+	}
+
+	originalText := req.Text
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	sendEvent := func(event string, data interface{}) {
+		payload, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
+		flusher.Flush()
+	}
+
+	language := interface{}(nil)
+	if req.Language != "" {
+		language = req.Language
+	}
+
+	sendEvent("status", map[string]interface{}{
+		"requestId": req.RequestID,
+		"status":    "started",
+		"bookTitle": req.BookTitle,
+		"voice":     req.Voice,
+		"language":  language,
+		"hasText":   originalText != "",
+		"fileCount": len(req.Files),
+	})
+
+	req.OnProgress = func(step, totalSteps, progress int, message string, current *models.StepProgress) {
+		sendEvent("progress", map[string]interface{}{
+			"step":             step,
+			"totalSteps":       totalSteps,
+			"progress":         progress,
+			"message":          message,
+			"currentStepProcess": current,
+		})
+	}
+
+	result, err := req.Run()
+	if err != nil {
+		req.Cleanup()
+		sendEvent("error", map[string]string{"message": fmt.Sprintf("%v", err)})
+		return
+	}
+
+	sendEvent("complete", result)
+}
+
+/************************************************************************
+* DownloadAudiobook serves the generated MP3 file for a finished transform.
+*********************************************************************/
+func DownloadAudiobook(w http.ResponseWriter, r *http.Request) {
+	requestID := r.PathValue("requestId")
+	filename := r.PathValue("filename")
+	if requestID == "" || filename == "" {
+		http.Error(w, "requestId and filename are required", http.StatusBadRequest)
+		return
+	}
+
+	requestID = filepath.Base(requestID)
+	filename = filepath.Base(filename)
+
+	filePath := filepath.Join("src", "content", "api_requests", requestID, "done", filename, filename+".mp3")
+	info, err := os.Stat(filePath)
+	if err != nil {
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "audio/mpeg")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.mp3\"", filename))
+	http.ServeFile(w, r, filePath)
 }

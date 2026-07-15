@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   ROUTE_CREATE,
-  ROUTE_COURSES,
+  ROUTE_HOME,
   ROUTE_SUBJECTS,
   ROUTE_USERS_ME,
 } from "@constants";
@@ -11,8 +11,8 @@ import zapohtehLogo from "../../../../public/logo.webp";
 
 // Primary navigation, grouped the same way as the reference dashboard.
 const GENERAL = [
+  { label: "Courses", icon: "book-outline", to: ROUTE_HOME },
   { label: "Create", icon: "add-circle-outline", to: ROUTE_CREATE },
-  { label: "Courses", icon: "book-outline", to: ROUTE_COURSES },
   { label: "Subjects", icon: "pricetag-outline", to: ROUTE_SUBJECTS },
 ];
 
@@ -65,7 +65,9 @@ export const Sidebar = ({ onClose, className = "" }) => {
   const chosenAvatar = avatars.find((a) => a.pathName === user.avatar) || {};
 
   return (
-    <aside className={`flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm ${className}`}>
+    <aside
+      className={`flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm ${className}`}
+    >
       {/* Mobile close button */}
       {onClose && (
         <div className='flex items-center justify-end px-5 pt-4 lg:hidden'>

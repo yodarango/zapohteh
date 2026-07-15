@@ -18,20 +18,17 @@ export const Switch = ({
     }
   };
 
-  const variantClass = primary
-    ? "checked:bg-blue-500 checked:border-blue-500"
+  const trackClass = primary
+    ? "bg-blue-500/30 border-blue-500"
     : secondary
-      ? "checked:bg-dr-text/30 checked:border-dr-text"
+      ? "bg-dr-text/30 border-dr-text"
       : danger
-        ? "checked:bg-red-500 checked:border-red-500"
+        ? "bg-red-500/30 border-red-500"
         : warning
-          ? "checked:bg-yellow-400 checked:border-yellow-400"
+          ? "bg-yellow-400/30 border-yellow-400"
           : success
-            ? "checked:bg-dr-success checked:border-dr-success"
-            : "checked:bg-dr-accent checked:border-dr-accent";
-
-  const thumbVariantClass =
-    warning || success ? "checked:bg-dr-bg" : "checked:bg-dr-text";
+            ? "bg-dr-success/30 border-dr-success"
+            : "bg-dr-accent/30 border-dr-accent";
 
   const trackStyle = color
     ? {
@@ -52,14 +49,14 @@ export const Switch = ({
     >
       <div
         className={`absolute inset-0 rounded-full border transition-colors duration-150 ${
-          checked ? variantClass : "border-dr-accent bg-dr-accent/40"
+          checked ? trackClass : "bg-dr-text/20 border-dr-text/40"
         }`}
         style={trackStyle}
       />
       <div
-        className={`absolute top-2 h-8 w-8 rounded-full bg-dr-text transition-all duration-150 ${
+        className={`absolute top-2 h-8 w-8 rounded-full transition-all duration-150 ${
           checked ? "left-10" : "left-2"
-        } ${thumbVariantClass}`}
+        } ${checked && (warning || success) ? "bg-dr-bg" : "bg-dr-text"}`}
       />
       <input
         type='checkbox'

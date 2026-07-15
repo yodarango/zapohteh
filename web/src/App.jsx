@@ -20,7 +20,6 @@ import {
   ROUTE_HOME,
   ROUTE_AUTH,
   ROUTE_LEARN,
-  ROUTE_COURSES,
   ROUTE_SUBJECTS,
   ROUTE_USERS_ME,
   ROUTE_CREATE,
@@ -33,7 +32,6 @@ const router = createBrowserRouter(
         <Route element={<MainLayout />} errorElement={<></>}>
           <Route path={ROUTE_HOME} element={<CoursesView />} />
           <Route path={ROUTE_CREATE} element={<IndexView />} />
-          <Route path={ROUTE_COURSES} element={<CoursesView />} />
           <Route path={ROUTE_SUBJECTS} element={<SubjectsView />} />
           <Route path={ROUTE_USERS_ME} element={<MeView />} />
           <Route path={`${ROUTE_LEARN}/:topic`} element={<LearnView />} />

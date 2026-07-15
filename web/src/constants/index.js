@@ -33,6 +33,9 @@ export const API_POST_COURSE_SUBJECTS = API_BASE + "/course-subjects";
 export const API_GET_CHAT = API_BASE + "/chat";
 export const API_POST_CHAT = API_BASE + "/chat";
 
+// tanjreen audiobook transformation API
+export const TANJREEN_API_URL = import.meta.env.TANJREEN_API_URL;
+export const TANJREEN_API_KEY = import.meta.env.TANJREEN_API_KEY;
 
 export const ROUTE_SUBJECTS = "/subjects";
 

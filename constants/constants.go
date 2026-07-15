@@ -34,6 +34,11 @@ const ROUTE_POST_CHAT = ROUTE_API_BASE + "/chat"
 // static files for generated research data (images, etc.)
 const ROUTE_DATA_FILES = "/data/"
 
+// tanjreen audiobook transformation API
+const ROUTE_POST_TRANSFORM = ROUTE_API_BASE + "/transform"
+const ROUTE_GET_DOWNLOAD = "GET " + ROUTE_API_BASE + "/download/{requestId}/{filename}"
+
 // context must have a predefined custom context key type
 type contextKey string
 const USER_CONTEXT_AUTH_KEY contextKey = "currentUser"
+const API_KEY_CONTEXT_KEY contextKey = "apiKey"

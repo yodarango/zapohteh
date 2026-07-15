@@ -11,9 +11,9 @@ import { useAppContext } from "@views/context/appContextProvider";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
+  { value: "low", label: "☕️ Low" },
+  { value: "medium", label: "🧐 Medium" },
+  { value: "high", label: "👨‍🔬 High" },
 ];
 
 const LANGUAGES = ["English", "Italian", "Spanish", "German"];
@@ -80,13 +80,6 @@ export const IntroSection = () => {
       });
       return;
     }
-    if (selectedSubjects.size === 0) {
-      showToast({
-        type: "danger",
-        message: "Please select at least one subject",
-      });
-      return;
-    }
 
     // reset progress state before starting a new research
     setLoading(true);
@@ -128,7 +121,10 @@ export const IntroSection = () => {
           } else if (event === "error") {
             showToast({
               type: "danger",
-              message: typeof parsed === "string" ? parsed : parsed?.message || "Research failed",
+              message:
+                typeof parsed === "string"
+                  ? parsed
+                  : parsed?.message || "Research failed",
             });
           }
         },
@@ -146,10 +142,11 @@ export const IntroSection = () => {
   return (
     <section>
       <h1 className='mb-1 text-2xl font-bold text-dr-text'>
-        What do you want to learn about today
+        what brain update are we installing today? 🧠
       </h1>
       <p className='mb-6 text-sm text-dr-text-muted'>
-        Describe a topic and we will research it for you, chapter by chapter.
+        You can make it as broad as the gates of Hell or as narrow as the eye of
+        a niddle. Just describe it.
       </p>
 
       <div className='rounded-2xl border border-dr-border bg-dr-surface-light p-6'>
@@ -159,36 +156,41 @@ export const IntroSection = () => {
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder='Title...'
+              placeholder='TItle for this lesson'
             />
             <TextArea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Type a topic...'
+              placeholder='Describe everythiing you want to know about it...'
               minRows={3}
             />
             {/* Research depth selector */}
-            <div className='flex gap-3'>
-              {RESEARCH_LEVELS.map((option) => (
-                <label
-                  key={option.value}
-                  className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
-                    level === option.value
-                      ? "border-dr-accent bg-dr-accent-light text-dr-accent"
-                      : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
-                  }`}
-                >
-                  <input
-                    type='radio'
-                    name='research-level'
-                    value={option.value}
-                    checked={level === option.value}
-                    onChange={() => setLevel(option.value)}
-                    className='sr-only'
-                  />
-                  {option.label}
-                </label>
-              ))}
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm font-medium text-dr-text'>
+                Research Intensity
+              </span>
+              <div className='flex flex-wrap gap-3'>
+                {RESEARCH_LEVELS.map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                      level === option.value
+                        ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                        : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
+                    }`}
+                  >
+                    <input
+                      type='radio'
+                      name='research-level'
+                      value={option.value}
+                      checked={level === option.value}
+                      onChange={() => setLevel(option.value)}
+                      className='sr-only'
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
             </div>
 
             {/* Language selector */}
@@ -220,7 +222,9 @@ export const IntroSection = () => {
 
             {/* Writing style selector */}
             <div className='flex flex-col gap-2'>
-              <span className='text-sm font-medium text-dr-text'>Writing style</span>
+              <span className='text-sm font-medium text-dr-text'>
+                Writing style
+              </span>
               <div className='flex flex-wrap gap-3'>
                 {WRITING_STYLES.map((option) => (
                   <label
@@ -259,15 +263,13 @@ export const IntroSection = () => {
             </div>
             {/* Subject selector */}
             <div className='flex flex-col gap-2'>
-              <span className='text-sm font-medium text-dr-text'>
-                Subjects{selectedSubjects.size === 0 && (
-                  <span className='ml-1 text-dr-danger'>*</span>
-                )}
-              </span>
+              <span className='text-sm font-medium text-dr-text'>Subjects</span>
               {subjectsLoading ? (
                 <Loading size={18} />
               ) : subjectsError ? (
-                <p className='text-xs text-dr-text-muted'>Failed to load subjects</p>
+                <p className='text-xs text-dr-text-muted'>
+                  Failed to load subjects
+                </p>
               ) : subjects?.length === 0 ? (
                 <p className='text-xs text-dr-text-muted'>
                   No subjects yet. Create some in the subjects page.
@@ -304,11 +306,7 @@ export const IntroSection = () => {
                               ? "border-white bg-white"
                               : "border-current bg-transparent"
                           }`}
-                          style={
-                            selected
-                              ? {}
-                              : { borderColor: subject.color }
-                          }
+                          style={selected ? {} : { borderColor: subject.color }}
                         />
                         {subject.name}
                       </button>
@@ -342,9 +340,7 @@ export const IntroSection = () => {
                   <div
                     key={index}
                     className={`h-0.5 flex-1 ${
-                      index < currentStep - 1
-                        ? "bg-dr-success"
-                        : "bg-dr-border"
+                      index < currentStep - 1 ? "bg-dr-success" : "bg-dr-border"
                     }`}
                   />
                 ) : null,
@@ -396,7 +392,8 @@ export const IntroSection = () => {
             {chapters.map((chapter) => {
               const isDone = completed.includes(chapter);
               const isCurrent =
-                !isDone && chapter === chapters.find((c) => !completed.includes(c));
+                !isDone &&
+                chapter === chapters.find((c) => !completed.includes(c));
               return (
                 <li
                   key={chapter}

@@ -11,7 +11,9 @@ import {
   API_GET_COURSE_SUBJECTS,
   API_POST_COURSE_SUBJECTS,
   API_BASE,
-  ROUTE_COURSES,
+  ROUTE_HOME,
+  TANJREEN_API_URL,
+  TANJREEN_API_KEY,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
 import { ChatPanel } from "./ChatPanel";
@@ -298,6 +300,14 @@ export const LearnView = () => {
   };
 
   const narrate = () => {
+    if (!TANJREEN_API_KEY) {
+      showToast({
+        type: "danger",
+        message: "Tanjreen API key is not configured",
+      });
+      return;
+    }
+
     const text = content
       .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -305,10 +315,13 @@ export const LearnView = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-    fetch("https://tanjreen.shrood.app", {
+    fetch(TANJREEN_API_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "text/plain" },
+      headers: {
+        "Content-Type": "text/plain",
+        "X-API-Key": TANJREEN_API_KEY,
+      },
       body: text,
     });
 
@@ -318,11 +331,7 @@ export const LearnView = () => {
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
-        <Button
-          secondary
-          className='mb-6'
-          onClick={() => navigate(ROUTE_COURSES)}
-        >
+        <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
           <ion-icon name='arrow-back-outline'></ion-icon>
           <span className='ml-2'>Back</span>
         </Button>
