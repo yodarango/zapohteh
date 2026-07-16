@@ -29,10 +29,9 @@ func main (){
 	defer dbConfig.Conn.Close()
 	
 	// set up the app
-	err = godotenv.Load()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Load environment variables from a .env file if present, but do not fail
+	// if the file is missing (e.g. when running in Docker with env vars injected).
+	_ = godotenv.Load()
 	env := os.Getenv("ENV")
 	appConfig := config.NewAppConfig(env)
 

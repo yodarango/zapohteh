@@ -38,7 +38,6 @@ RUN apk --no-cache add ca-certificates libgcc
 WORKDIR /root/
 
 COPY --from=backend-build /app/server .
-COPY --from=backend-build /app/.env .
 COPY --from=backend-build /app/templates ./templates
 COPY --from=frontend-build /app/web/dist ./web/dist
 
