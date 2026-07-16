@@ -13,11 +13,22 @@ import (
 	"unicode/utf8"
 )
 
-const openAIChatURL = "https://api.openai.com/v1/chat/completions"
-const openAIImageURL = "https://api.openai.com/v1/images/generations"
-const openAIModel = "gpt-4o-mini"
-const openAIModelSearch = "gpt-4o-mini-search-preview"
-const openAIImageModel = "gpt-image-2"
+var (
+    OpenAIChatURL     string
+    OpenAIImageURL    string
+    OpenAIModel       string
+    OpenAIModelSearch string
+    OpenAIImageModel  string
+)
+
+func init() {
+
+    OpenAIChatURL = os.Getenv("OPENAI_CHAT_URL")
+    OpenAIImageURL = os.Getenv("OPENAI_IMAGE_URL")
+    OpenAIModel = os.Getenv("OPENAI_MODEL")
+    OpenAIModelSearch = os.Getenv("OPENAI_MODEL_SEARCH")
+    OpenAIImageModel = os.Getenv("OPENAI_IMAGE_MODEL")
+}
 
 type OpenAIService struct {
 	APIKey string
