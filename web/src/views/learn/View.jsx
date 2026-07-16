@@ -239,7 +239,7 @@ export const LearnView = () => {
     const id = chapterSlug(title);
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
+      element.scrollIntoView({ behavior: "auto", block: "start" });
     }
   };
 
