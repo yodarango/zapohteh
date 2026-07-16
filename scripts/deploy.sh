@@ -2,9 +2,7 @@
 
 source ~/.zshrc
 
-# Delete this line
-echo "Please set up deployment file before proceeding."
-exit 1
+set -e
 
 # Check if a commit message was provided
 if [ "$#" -ne 1 ]; then
@@ -33,16 +31,17 @@ else
     exit 1
 fi
 
-# Copy the files to the VPS
+# Deploy to the VPS
 ssh_main "\
-cd /var/www/repos/where?; \
-git reset --hard origin/main; \
-git pull; \
-echo '👍 pulled changes from git and reset to origin'; \
-echo 'Current directory: '; pwd; \
-echo '🏗️ Building docker now...';\
-docker compose down
-docker compose up -d --build; \
+cd /var/www/repos/zapohteh/app && \
+git fetch origin && \
+git reset --hard origin/main && \
+git pull && \
+echo '👍 pulled changes from git and reset to origin' && \
+echo 'Current directory: ' && pwd && \
+echo '🏗️ Building docker now...' && \
+docker compose down && \
+docker compose up -d --build && \
 echo '🚀🚀🚀 Deployment successful'"
 
 
