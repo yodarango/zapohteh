@@ -2,8 +2,6 @@
 
 source ~/.zshrc
 
-set -e
-
 # Check if a commit message was provided
 if [ "$#" -ne 1 ]; then
     echo "Please provide a commit message"
@@ -14,31 +12,36 @@ fi
 COMMIT_MESSAGE="$1"
 
 # Add changes to the staging area
+# You can adjust this to add specific files or use other git add options
 git add .
 
-# Commit only if there are staged changes; otherwise continue with the deployment
-if ! git diff --cached --quiet; then
-    git commit -m "$COMMIT_MESSAGE"
-else
-    echo "No local changes to commit, continuing with deployment"
-fi
+# Commit the changes with the provided commit message
+git commit -m "$COMMIT_MESSAGE"
 
-# Push changes to the Git repository (no-op if everything is up to date)
+# Push changes to the Git repository
 git push
 
-echo "🐈 Done pushing changes to git. Now pulling changes to VPS."
+# Check if the push was successful
+if [ $? -eq 0 ]; then
+    echo "🐈 Done pushing changes to git. Now pulling changes to VPS."
+else
+    echo "Git push failed"
+    exit 1
+fi
 
-# Deploy to the VPS
+# Copy the files to the VPS
 ssh_main "\
-cd /var/www/repos/zapohteh/app && \
-git fetch origin && \
-git reset --hard origin/main && \
-git pull && \
-echo '👍 pulled changes from git and reset to origin' && \
-echo 'Current directory: ' && pwd && \
-echo '🏗️ Building docker now...' && \
-docker compose down && \
-docker compose up -d --build && \
+cd /var/www/repos/zapohteh/app; \
+git reset --hard origin/main; \
+git pull; \
+echo '👍 pulled changes from git and reset to origin'; \
+echo 'Current directory: '; pwd; \
+echo '🏗️ Building docker now...';\
+docker compose down; \
+export DOCKER_BUILDKIT=1; \
+export COMPOSE_DOCKER_CLI_BUILD=1; \
+docker compose build --parallel; \
+docker compose up -d; \
 echo '🚀🚀🚀 Deployment successful'"
 
 
