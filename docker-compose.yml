@@ -1,9 +1,11 @@
 services:
-  goilerplate_app:
+  zapohteh_app:
     build: .
-    container_name: ${COMPOSE_PROJECT_NAME}
+    container_name: ${COMPOSE_PROJECT_NAME:-zapohteh}
     ports:
       - "8014:8014"
+    env_file:
+      - .env
     environment:
       - DB_PATH=${DB_PATH:-/app/data/app.db}
       - STATIC_PATH=web/dist
