@@ -14,22 +14,19 @@ fi
 COMMIT_MESSAGE="$1"
 
 # Add changes to the staging area
-# You can adjust this to add specific files or use other git add options
 git add .
 
-# Commit the changes with the provided commit message
-git commit -m "$COMMIT_MESSAGE"
+# Commit only if there are staged changes; otherwise continue with the deployment
+if ! git diff --cached --quiet; then
+    git commit -m "$COMMIT_MESSAGE"
+else
+    echo "No local changes to commit, continuing with deployment"
+fi
 
-# Push changes to the Git repository
+# Push changes to the Git repository (no-op if everything is up to date)
 git push
 
-# Check if the push was successful
-if [ $? -eq 0 ]; then
-    echo "🐈 Done pushing changes to git. Now pulling changes to VPS."
-else
-    echo "Git push failed"
-    exit 1
-fi
+echo "🐈 Done pushing changes to git. Now pulling changes to VPS."
 
 # Deploy to the VPS
 ssh_main "\
