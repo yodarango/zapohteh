@@ -11,7 +11,7 @@ import { IntroSection } from "./components/IntroSection/IntroSection";
 
 export const Layout = () => {
   return (
-    <div className='mx-auto w-full max-w-[600px] px-4 md:px-2'>
+    <div className='mx-auto w-full max-w-[600px] px-4'>
       <IntroSection />
     </div>
   );

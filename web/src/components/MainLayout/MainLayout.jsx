@@ -34,7 +34,7 @@ export const MainLayout = () => {
           <div className='sticky top-0 z-10'>
             <Topbar onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
           </div>
-          <main className='flex-1 overflow-y-auto rounded-3xl border border-dr-border bg-dr-surface px-5 py-6 shadow-sm lg:px-8'>
+          <main className='flex-1 overflow-y-auto lg:rounded-3xl lg:border lg:border-dr-border lg:bg-dr-surface lg:px-8 lg:py-6 lg:shadow-sm'>
             <Outlet />
           </main>
         </div>
