@@ -27,7 +27,6 @@ COPY config/ ./config/
 COPY constants/ ./constants/
 COPY repo/ ./repo/
 COPY templates/ ./templates/
-COPY .env .
 
 RUN go build -o server ./cmd/main
 
