@@ -1,14 +1,15 @@
 services:
   zapohteh_app:
-    build: .
-    container_name: ${COMPOSE_PROJECT_NAME:-zapohteh}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}
     ports:
       - "8014:8014"
-    env_file:
-      - .env
     environment:
       - DB_PATH=${DB_PATH:-/app/data/app.db}
       - STATIC_PATH=web/dist
+      - CONTENT_DIR=/app/data
     networks:
       - app-network
     volumes:

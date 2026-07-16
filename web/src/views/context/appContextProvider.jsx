@@ -20,31 +20,38 @@ export const AppContextProvider = (props) => {
   // Get auth token from localStorage and decode user data
   function setupAuth() {
     const token = localStorage.getItem("auth");
+    const userData = getUserFromToken();
 
-    if (token) {
-      const userData = getUserFromToken();
-
-      if (userData) {
-        setState((prevState) =>
-          update(prevState, {
-            isPending: {
-              $set:
-                userData.status === USER_STATUS_PENDING &&
-                userData.status !== USER_STATUS_ACTIVE,
-            },
-            isActive: {
-              $set:
-                userData.status === USER_STATUS_ACTIVE &&
-                userData.status !== USER_STATUS_PENDING,
-            },
-            isAuthenticated: { $set: true },
-            isLoading: { $set: false },
-            user: { $set: userData },
-            auth: { $set: token },
-          }),
-        );
-      }
+    if (!token || !userData.id) {
+      setState((prevState) =>
+        update(prevState, {
+          isAuthenticated: { $set: false },
+          isLoading: { $set: false },
+          auth: { $set: {} },
+          user: { $set: {} },
+        }),
+      );
+      return;
     }
+
+    setState((prevState) =>
+      update(prevState, {
+        isPending: {
+          $set:
+            userData.status === USER_STATUS_PENDING &&
+            userData.status !== USER_STATUS_ACTIVE,
+        },
+        isActive: {
+          $set:
+            userData.status === USER_STATUS_ACTIVE &&
+            userData.status !== USER_STATUS_PENDING,
+        },
+        isAuthenticated: { $set: true },
+        isLoading: { $set: false },
+        user: { $set: userData },
+        auth: { $set: token },
+      }),
+    );
   }
 
   // Function to decode JWT token and get user data
