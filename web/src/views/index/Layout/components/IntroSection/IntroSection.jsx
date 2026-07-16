@@ -45,6 +45,7 @@ export const IntroSection = () => {
   const [topic, setTopic] = useState("");
   const [finished, setFinished] = useState(false);
   const [currentStep, setCurrentStep] = useState(null);
+  const [thumbnailError, setThumbnailError] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState(new Set());
 
   const FORM_STATE_KEY = "zapohteh-lesson-form";
@@ -132,6 +133,7 @@ export const IntroSection = () => {
     setFinished(false);
     setTopic("");
     setCurrentStep(0);
+    setThumbnailError(false);
 
     try {
       await streamPost({
@@ -154,6 +156,9 @@ export const IntroSection = () => {
             setCompleted((prev) => [...prev, parsed]);
           } else if (event === "coverImage") {
             setCurrentStep(2);
+            if (parsed.phase === "error") {
+              setThumbnailError(true);
+            }
           } else if (event === "done") {
             setTopic(parsed.topic);
             setFinished(true);
@@ -194,7 +199,7 @@ export const IntroSection = () => {
         a niddle. Just describe it.
       </p>
 
-      <div className='rounded-2xl border border-dr-border bg-dr-surface-light p-6'>
+      <div className='lg:rounded-2xl lg:border lg:border-dr-border lg:bg-dr-surface-light lg:p-6'>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
           <div className='flex flex-col gap-3'>
             {/* Title only names the storage folder, nothing else */}
@@ -395,6 +400,7 @@ export const IntroSection = () => {
               {STEPS.map((step, index) => {
                 const isActive = index === currentStep;
                 const isCompleted = index < currentStep;
+                const isError = thumbnailError && index === 2;
                 return (
                   <div
                     key={step.key}
@@ -402,14 +408,18 @@ export const IntroSection = () => {
                   >
                     <div
                       className={`relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                        isCompleted
-                          ? "bg-dr-success text-white"
-                          : isActive
-                            ? "bg-dr-accent text-white animate-pulse"
-                            : "border border-dr-border bg-dr-surface text-dr-text-muted"
+                        isError
+                          ? "bg-dr-danger text-white"
+                          : isCompleted
+                            ? "bg-dr-success text-white"
+                            : isActive
+                              ? "bg-dr-accent text-white animate-pulse"
+                              : "border border-dr-border bg-dr-surface text-dr-text-muted"
                       }`}
                     >
-                      {isCompleted ? (
+                      {isError ? (
+                        <ion-icon name='close-outline'></ion-icon>
+                      ) : isCompleted ? (
                         <ion-icon name='checkmark-outline'></ion-icon>
                       ) : (
                         index + 1
@@ -417,7 +427,7 @@ export const IntroSection = () => {
                     </div>
                     <span
                       className={`text-center text-xs font-medium ${
-                        isActive || isCompleted
+                        isError || isActive || isCompleted
                           ? "text-dr-text"
                           : "text-dr-text-muted"
                       }`}
@@ -428,6 +438,11 @@ export const IntroSection = () => {
                 );
               })}
             </div>
+            {thumbnailError && (
+              <p className='mt-3 text-center text-xs font-medium text-dr-danger'>
+                Could not create the thumbnail. You can try again later.
+              </p>
+            )}
           </div>
         )}
 

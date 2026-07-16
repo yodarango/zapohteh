@@ -1,17 +1,20 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
-import { Button, Loading, Thumbnail } from "@ds";
+import { Button, Loading, Thumbnail, ConfirmationModal } from "@ds";
 import {
   API_GET_TOPIC,
+  API_POST_COURSE_COVER_IMAGE,
   API_POST_CHAPTER_IMAGE,
   API_GET_READING_PROGRESS,
   API_POST_READING_PROGRESS,
   API_GET_SUBJECTS,
   API_GET_COURSE_SUBJECTS,
   API_POST_COURSE_SUBJECTS,
+  API_DELETE_COURSE,
   API_BASE,
   ROUTE_HOME,
+  ROUTE_COURSES,
   TANJREEN_API_URL,
   TANJREEN_API_KEY,
 } from "@constants";
@@ -48,6 +51,9 @@ export const LearnView = () => {
   // all available subjects and the ids currently assigned to this course
   const [subjects, setSubjects] = useState([]);
   const [courseSubjectIds, setCourseSubjectIds] = useState(new Set());
+  const [coverImageLoading, setCoverImageLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,6 +158,37 @@ export const LearnView = () => {
         next.delete(chapter);
         return next;
       });
+    }
+  };
+
+  const createCoverImage = async () => {
+    setCoverImageLoading(true);
+    try {
+      const res = await fetch(API_POST_COURSE_COVER_IMAGE, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ topic }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Failed to create cover image");
+      }
+      if (result.data?.coverImagePath) {
+        setCoverImagePath(result.data.coverImagePath);
+      }
+      showToast({
+        type: "success",
+        message: coverImagePath
+          ? "Cover image recreated"
+          : "Cover image created",
+      });
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to create cover image",
+      });
+    } finally {
+      setCoverImageLoading(false);
     }
   };
 
@@ -333,6 +370,33 @@ export const LearnView = () => {
     showToast({ type: "info", message: "Narration request sent" });
   };
 
+  const handleDeleteCourse = async () => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch(
+        `${API_DELETE_COURSE}/${encodeURIComponent(topic)}`,
+        {
+          method: "DELETE",
+          headers: authHeaders(),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "Failed to delete course");
+      }
+      showToast({ type: "success", message: "Course deleted" });
+      navigate(ROUTE_COURSES);
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to delete course",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
@@ -341,13 +405,35 @@ export const LearnView = () => {
           <span className='ml-2'>Back</span>
         </Button>
 
-        {coverImagePath && (
-          <Thumbnail
-            src={coverImagePath}
-            alt={topic}
-            className='mb-6 h-48 w-full rounded-2xl'
-          />
-        )}
+        <div className='relative mb-6'>
+          {coverImagePath ? (
+            <Thumbnail
+              src={coverImagePath}
+              alt={topic}
+              className='h-48 w-full rounded-2xl'
+            />
+          ) : (
+            <div className='flex h-48 w-full items-center justify-center rounded-2xl bg-dr-accent/20'>
+              <ion-icon
+                name='image-outline'
+                className='text-4xl text-dr-accent/60'
+              />
+            </div>
+          )}
+          <button
+            type='button'
+            onClick={createCoverImage}
+            disabled={coverImageLoading}
+            className='absolute right-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
+          >
+            {coverImageLoading ? (
+              <Loading size={18} />
+            ) : (
+              <ion-icon name='image-outline' />
+            )}
+            <span>{coverImagePath ? "Recreate" : "Create"}</span>
+          </button>
+        </div>
 
         {chapters.length > 0 && (
           <div className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
@@ -528,10 +614,30 @@ export const LearnView = () => {
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
             </Button>
+            <Button
+              danger
+              className='w-full'
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <ion-icon name='trash-outline'></ion-icon>
+              <span className='ml-2'>Delete course</span>
+            </Button>
           </div>
         </div>
 
         <ChatPanel topic={topic} chapters={chapters} />
+
+      <ConfirmationModal
+        open={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteCourse}
+        title='Delete course'
+        message={`Are you sure you want to delete "${topic}"? This action cannot be undone.`}
+        confirmText='Delete'
+        cancelText='Cancel'
+        confirmVariant='danger'
+        isLoading={isDeleting}
+      />
       </div>
     </div>
   );

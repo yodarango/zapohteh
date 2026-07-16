@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,6 +24,8 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, models.Authenticate(LearnAbout))
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
+	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
+	mux.HandleFunc(constants.ROUTE_POST_COURSE_COVER_IMAGE, models.Authenticate(CreateCourseCoverImage))
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
 	mux.HandleFunc(constants.ROUTE_GET_SUBJECTS, models.Authenticate(SubjectsHandler))
@@ -299,6 +302,46 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
+* Deletes a user's course and its content folder after confirming the
+* authenticated user owns it.
+*********************************************************************/
+func DeleteCourse(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	rawID := r.PathValue("id")
+	courseID, err := url.PathUnescape(rawID)
+	if err != nil {
+		httpResponse.Error = "Invalid course id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.DeleteCourse(authUser.Id, courseID); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Data = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
 * Serves the assembled markdown content of a previously researched topic.
 *********************************************************************/
 func GetTopic(w http.ResponseWriter, r *http.Request) {
@@ -403,6 +446,59 @@ func ChapterImage(w http.ResponseWriter, r *http.Request) {
 	httpResponse.Data = map[string]interface{}{
 		"topic":   requestBody.Topic,
 		"content": content,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Generates a new cover image for an existing course without removing the
+* previous cover image file. The new path is returned in the response.
+*********************************************************************/
+func CreateCourseCoverImage(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Topic string `json:"topic"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	coverPath, err := models.GenerateCoverImageForCourse(authUser.Id, requestBody.Topic)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":          requestBody.Topic,
+		"coverImagePath": coverPath,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil

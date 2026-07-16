@@ -1,7 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Loading, Input, Select, Thumbnail } from "@ds";
-import { API_GET_COURSES, API_GET_SUBJECTS, ROUTE_LEARN } from "@constants";
+import {
+  Loading,
+  Input,
+  Select,
+  Thumbnail,
+  ConfirmationModal,
+  Button,
+} from "@ds";
+import {
+  API_GET_COURSES,
+  API_DELETE_COURSE,
+  API_GET_SUBJECTS,
+  ROUTE_LEARN,
+} from "@constants";
 import { useGet, formatLocalTime } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -64,19 +76,37 @@ export const CoursesView = () => {
     if (selectedMonths.size > 0)
       p.set("month", Array.from(selectedMonths).join(","));
     return p;
-  }, [debouncedQuery, selectedSubjects, selectedStatus, selectedYears, selectedMonths]);
+  }, [
+    debouncedQuery,
+    selectedSubjects,
+    selectedStatus,
+    selectedYears,
+    selectedMonths,
+  ]);
 
   const searchUrl = params.toString()
     ? `${API_GET_COURSES}?${params.toString()}`
     : API_GET_COURSES;
 
-  const { data, loading, error } = useGet({ url: searchUrl });
+  const {
+    data,
+    loading,
+    error,
+    refetch: refetchCourses,
+  } = useGet({
+    url: searchUrl,
+  });
   const courses = useMemo(() => data || [], [data]);
 
   // Fetch the full, unfiltered course list so year/month filter tags always remain visible
   // regardless of other active filters.
-  const { data: allCoursesData } = useGet({ url: API_GET_COURSES });
+  const { data: allCoursesData, refetch: refetchAllCourses } = useGet({
+    url: API_GET_COURSES,
+  });
   const allCourses = useMemo(() => allCoursesData || [], [allCoursesData]);
+
+  const [courseToDelete, setCourseToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [sortBy, setSortBy] = useState(() => {
     if (typeof window === "undefined") return "lastRead";
@@ -164,6 +194,34 @@ export const CoursesView = () => {
     setSelectedMonths(new Set());
   };
 
+  const handleDelete = async () => {
+    if (!courseToDelete) return;
+    setIsDeleting(true);
+    try {
+      const response = await fetch(
+        `${API_DELETE_COURSE}/${encodeURIComponent(courseToDelete.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: "Bearer " + localStorage.getItem("auth"),
+          },
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "Failed to delete course");
+      }
+      showToast({ type: "success", message: "Course deleted" });
+      refetchCourses();
+      refetchAllCourses();
+    } catch (err) {
+      showToast({ type: "danger", message: err.message });
+    } finally {
+      setIsDeleting(false);
+      setCourseToDelete(null);
+    }
+  };
+
   return (
     <section>
       <div className='mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
@@ -203,7 +261,9 @@ export const CoursesView = () => {
             <button
               key={subject.id}
               type='button'
-              onClick={() => toggleInSet(selectedSubjects, setSelectedSubjects, subject.id)}
+              onClick={() =>
+                toggleInSet(selectedSubjects, setSelectedSubjects, subject.id)
+              }
               className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
                 selected
                   ? ""
@@ -267,7 +327,9 @@ export const CoursesView = () => {
           <button
             key={month.value}
             type='button'
-            onClick={() => toggleInSet(selectedMonths, setSelectedMonths, month.value)}
+            onClick={() =>
+              toggleInSet(selectedMonths, setSelectedMonths, month.value)
+            }
             className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
               selectedMonths.has(month.value)
                 ? "border-dr-accent bg-dr-accent-light text-dr-accent"
@@ -304,94 +366,137 @@ export const CoursesView = () => {
       {!loading && courses.length > 0 && (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {sortedCourses.map((course, index) => (
-            <Link
+            <div
               key={course.id}
-              to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}
-              className='group flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'
+              className='group relative flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'
             >
-              {course.coverImagePath ? (
-                <Thumbnail
-                  src={course.coverImagePath}
-                  alt={course.name}
-                  className='h-28 w-full rounded-xl'
-                />
-              ) : (
-                <div
-                  className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
-                    TINTS[index % TINTS.length]
-                  }`}
-                >
-                  <ion-icon name='book-outline'></ion-icon>
-                </div>
-              )}
-              <div className='flex items-center justify-between gap-2'>
-                <span className='font-semibold text-dr-text line-clamp-2'>
-                  {course.name}
-                </span>
-                <ion-icon
-                  name='arrow-forward-outline'
-                  className='shrink-0 text-dr-text-muted transition-colors group-hover:text-dr-accent'
-                ></ion-icon>
-              </div>
-
-              <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
-                <span>Created: {formatLocalTime(course.createdAt)}</span>
-                {course.lastReadAt && !course.completedAt && (
-                  <span>Last read: {formatLocalTime(course.lastReadAt)}</span>
+              <Link
+                to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}
+                className='flex flex-col gap-3'
+              >
+                {course.coverImagePath ? (
+                  <Thumbnail
+                    src={course.coverImagePath}
+                    alt={course.name}
+                    className='h-28 w-full rounded-xl'
+                  />
+                ) : (
+                  <div
+                    className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
+                      TINTS[index % TINTS.length]
+                    }`}
+                  >
+                    <ion-icon name='book-outline'></ion-icon>
+                  </div>
                 )}
-                {course.completedAt && (
-                  <span className='text-dr-success'>
-                    Completed: {formatLocalTime(course.completedAt)}
+                <div className='flex items-center justify-between gap-2'>
+                  <span className='font-semibold text-dr-text line-clamp-2'>
+                    {course.name}
                   </span>
-                )}
-              </div>
+                </div>
 
-              {course.totalChapters > 0 && (
-                <div className='mt-2'>
-                  {course.readChapters === course.totalChapters ? (
-                    <div className='flex items-center gap-1.5 text-sm text-dr-success'>
-                      <ion-icon name='checkmark-circle'></ion-icon>
-                      <span className='font-medium'>Read</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className='mb-1 flex items-center justify-between text-xs text-dr-text-muted'>
-                        <span>Progress</span>
-                        <span>
-                          {course.readChapters} of {course.totalChapters}
-                        </span>
-                      </div>
-                      <div className='h-1.5 w-full overflow-hidden rounded-full bg-dr-border'>
-                        <div
-                          className='h-full rounded-full bg-dr-accent'
-                          style={{
-                            width: `${Math.round(
-                              (course.readChapters / course.totalChapters) * 100,
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </>
+                <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
+                  <span>Created: {formatLocalTime(course.createdAt)}</span>
+
+                  <span>
+                    Last read:{" "}
+                    {course.lastReadAt && !course.completedAt
+                      ? formatLocalTime(course.lastReadAt)
+                      : "Not started"}
+                  </span>
+
+                  {course.completedAt && (
+                    <span className='text-dr-success'>
+                      Completed: {formatLocalTime(course.completedAt)}
+                    </span>
                   )}
                 </div>
-              )}
 
-              {course.subjects && course.subjects.length > 0 && (
-                <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-                  {course.subjects.map((subject) => (
-                    <span
-                      key={subject.id}
-                      title={subject.name}
-                      className='inline-block h-2.5 w-2.5 rounded-full'
-                      style={{ backgroundColor: subject.color }}
-                    />
-                  ))}
-                </div>
-              )}
-            </Link>
+                {course.totalChapters > 0 && (
+                  <div className='mt-2'>
+                    {course.readChapters === course.totalChapters ? (
+                      <div className='flex items-center gap-1.5 text-sm text-dr-success'>
+                        <ion-icon name='checkmark-circle'></ion-icon>
+                        <span className='font-medium'>Read</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className='mb-1 flex items-center justify-between text-xs text-dr-text-muted'>
+                          <span>Progress</span>
+                          <span>
+                            {course.readChapters} of {course.totalChapters}
+                          </span>
+                        </div>
+                        <div className='h-1.5 w-full overflow-hidden rounded-full bg-dr-border'>
+                          <div
+                            className='h-full rounded-full bg-dr-accent'
+                            style={{
+                              width: `${Math.round(
+                                (course.readChapters / course.totalChapters) *
+                                  100,
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {course.subjects && course.subjects.length > 0 ? (
+                  <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+                    {course.subjects.map((subject) => (
+                      <div className='flex flex-wrap items-center gap-1.5'>
+                        <span
+                          key={subject.id}
+                          title={subject.name}
+                          className='inline-block h-2.5 w-2.5 rounded-full'
+                          style={{ backgroundColor: subject.color }}
+                        />
+                        <span>{subject.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className='flex flex-wrap items-center gap-1.5'>
+                    <span className='inline-block h-2.5 w-2.5 rounded-full bg-gray-200' />
+                    <span>General</span>
+                  </div>
+                )}
+              </Link>
+
+              <Button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCourseToDelete(course);
+                }}
+                className=''
+                danger
+              >
+                <ion-icon name='trash-outline' className='text-lg' />
+                Delete
+              </Button>
+            </div>
           ))}
         </div>
       )}
+
+      <ConfirmationModal
+        open={!!courseToDelete}
+        onClose={() => setCourseToDelete(null)}
+        onConfirm={handleDelete}
+        title='Delete course'
+        message={
+          courseToDelete
+            ? `Are you sure you want to delete "${courseToDelete.name}"? This action cannot be undone.`
+            : ""
+        }
+        confirmText='Delete'
+        cancelText='Cancel'
+        confirmVariant='danger'
+        isLoading={isDeleting}
+      />
     </section>
   );
 };

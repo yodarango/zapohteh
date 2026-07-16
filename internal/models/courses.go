@@ -3,6 +3,8 @@ package models
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"zapohteh/internal/utils"
@@ -158,4 +160,38 @@ func SubjectColorMap(userId uint) (map[string][]Subject, error) {
 		m[key] = append(m[key], s)
 	}
 	return m, nil
+}
+
+// DeleteCourse removes a user's course from the database and deletes its content
+// folder. Related course_subjects and chat_messages rows are removed automatically
+// via ON DELETE CASCADE. The reading_progress rows are cleaned up explicitly.
+func DeleteCourse(userId uint, title string) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+
+	// Remove the course content folder first so the lesson disappears even if the
+	// database row is missing or partially created.
+	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(title))
+	if err := os.RemoveAll(folder); err != nil {
+		return fmt.Errorf("failed to delete course folder: %w", err)
+	}
+
+	// Delete the course row. Related course_subjects and chat_messages rows are
+	// removed via ON DELETE CASCADE.
+	_, err := ModelsRepo.DB.Conn.Exec(
+		"DELETE FROM courses WHERE user_id = ? AND title = ?",
+		userId, title,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete course from database: %w", err)
+	}
+
+	// reading_progress uses the course title, so clean it up explicitly.
+	_, _ = ModelsRepo.DB.Conn.Exec(
+		"DELETE FROM reading_progress WHERE user_id = ? AND course_title = ?",
+		userId, title,
+	)
+
+	return nil
 }

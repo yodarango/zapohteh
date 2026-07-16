@@ -265,8 +265,13 @@ func (r *Research) Run() error {
 		return err
 	}
 
+	// Cover image generation is best-effort. If it fails, notify the UI so it can
+	// mark the thumbnail step as failed, but continue to treat the lesson as
+	// successful since the chapters and research were already completed.
 	if err := r.GenerateCoverImage(); err != nil {
-		return err
+		if r.OnCoverImage != nil {
+			r.OnCoverImage("error", err.Error())
+		}
 	}
 
 	return nil
@@ -325,6 +330,29 @@ func (r *Research) WriteChaptersFile() error {
 	}
 
 	return nil
+}
+
+/**************************************************************************************
+* ReadChapters reads the persisted chapter titles from the topic folder.
+**************************************************************************************/
+func (r *Research) ReadChapters() ([]string, error) {
+	folder := r.folderPath()
+	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read chapters file: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	chapters := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		line = strings.TrimPrefix(line, donePrefix)
+		chapters = append(chapters, line)
+	}
+	return chapters, nil
 }
 
 /**************************************************************************************
@@ -678,7 +706,9 @@ func (r *Research) GenerateCoverImage() error {
 		return fmt.Errorf("failed to create images folder: %w", err)
 	}
 
-	fileName := "cover.png"
+	// Use a unique prefix so regenerating the cover image keeps the previous file.
+	prefix := nextImagePrefix(imagesDir)
+	fileName := fmt.Sprintf("%d-cover.png", prefix)
 	imagePath := filepath.Join(imagesDir, fileName)
 	if err := os.WriteFile(imagePath, imageBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write cover image file: %w", err)
@@ -694,6 +724,31 @@ func (r *Research) GenerateCoverImage() error {
 	}
 
 	return nil
+}
+
+/**************************************************************************************
+* GenerateCoverImageForCourse creates a fresh cover image for an existing course. The
+* chapter list is read from the persisted chapters file. Any previous cover image file
+* is left untouched; the new image is written with a unique prefix.
+**************************************************************************************/
+func GenerateCoverImageForCourse(userId uint, title string) (string, error) {
+	r := &Research{
+		UserID: userId,
+		Title:  title,
+		Topic:  title,
+	}
+
+	chapters, err := r.ReadChapters()
+	if err != nil {
+		return "", fmt.Errorf("could not read course chapters: %w", err)
+	}
+	r.Chapters = chapters
+
+	if err := r.GenerateCoverImage(); err != nil {
+		return "", err
+	}
+
+	return GetCoverImagePath(userId, title), nil
 }
 
 /**************************************************************************************
