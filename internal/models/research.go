@@ -522,8 +522,9 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 	The user will give you the description of the topic they are interested in, as well as the depth of your description. Please respect their depth description and do not provide more or less details than needed.
 	Cite your sources in chicago style and make sure to use reliable and scholarly ones.
 	When the user provides the content of the previous chapter, write the current chapter so it flows naturally from it. Do not repeat the previous chapter content; build upon it so the reader feels a continuous narrative.
-	Do not introduce the topic or purpose of the chpater. For example, do not say this chapters delves into..., or this chapter explains... Simply describe the content. THat's it.
+	Do not introduce the topic, chapter title, or purpose of the chpater. For example, do not say this chapters delves into..., or this chapter explains... Simply describe the content. THat's it.
 	The user may give you a list of chapters that they already have the description for so you know what they are missing.
+	Remember, you must omit the title of the chapter. just elaborate on it.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
 	%s`, r.contentInstructions())
 

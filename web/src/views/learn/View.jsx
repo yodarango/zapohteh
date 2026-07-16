@@ -469,6 +469,9 @@ export const LearnView = () => {
               id={chapterSlug(chapter.title)}
               className='mt-8 scroll-mt-6'
             >
+              <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
+                {chapter.title}
+              </h4>
               {/* chapter heading with its summary image action */}
               <div className='mb-3 flex items-start justify-between gap-4'>
                 <div className='flex shrink-0 items-center gap-2'>
@@ -627,17 +630,17 @@ export const LearnView = () => {
 
         <ChatPanel topic={topic} chapters={chapters} />
 
-      <ConfirmationModal
-        open={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDeleteCourse}
-        title='Delete course'
-        message={`Are you sure you want to delete "${topic}"? This action cannot be undone.`}
-        confirmText='Delete'
-        cancelText='Cancel'
-        confirmVariant='danger'
-        isLoading={isDeleting}
-      />
+        <ConfirmationModal
+          open={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteCourse}
+          title='Delete course'
+          message={`Are you sure you want to delete "${topic}"? This action cannot be undone.`}
+          confirmText='Delete'
+          cancelText='Cancel'
+          confirmVariant='danger'
+          isLoading={isDeleting}
+        />
       </div>
     </div>
   );
