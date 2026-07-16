@@ -14,21 +14,12 @@ import (
 )
 
 var (
-    OpenAIChatURL     string
-    OpenAIImageURL    string
-    OpenAIModel       string
-    OpenAIModelSearch string
-    OpenAIImageModel  string
+    openAIChatURL     = os.Getenv("OPENAI_CHAT_URL")
+    openAIImageURL    = os.Getenv("OPENAI_IMAGE_URL")
+    openAIModel       = os.Getenv("OPENAI_MODEL")
+    openAIModelSearch = os.Getenv("OPENAI_MODEL_SEARCH")
+    openAIImageModel  = os.Getenv("OPENAI_IMAGE_MODEL")
 )
-
-func init() {
-
-    OpenAIChatURL = os.Getenv("OPENAI_CHAT_URL")
-    OpenAIImageURL = os.Getenv("OPENAI_IMAGE_URL")
-    OpenAIModel = os.Getenv("OPENAI_MODEL")
-    OpenAIModelSearch = os.Getenv("OPENAI_MODEL_SEARCH")
-    OpenAIImageModel = os.Getenv("OPENAI_IMAGE_MODEL")
-}
 
 type OpenAIService struct {
 	APIKey string
