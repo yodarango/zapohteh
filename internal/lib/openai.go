@@ -13,13 +13,40 @@ import (
 	"unicode/utf8"
 )
 
-var (
-    openAIChatURL     = os.Getenv("OPENAI_CHAT_URL")
-    openAIImageURL    = os.Getenv("OPENAI_IMAGE_URL")
-    openAIModel       = os.Getenv("OPENAI_MODEL")
-    openAIModelSearch = os.Getenv("OPENAI_MODEL_SEARCH")
-    openAIImageModel  = os.Getenv("OPENAI_IMAGE_MODEL")
-)
+func getOpenAIChatURL() string {
+	if url := os.Getenv("OPENAI_CHAT_URL"); url != "" {
+		return url
+	}
+	return "https://api.openai.com/v1/chat/completions"
+}
+
+func getOpenAIImageURL() string {
+	if url := os.Getenv("OPENAI_IMAGE_URL"); url != "" {
+		return url
+	}
+	return "https://api.openai.com/v1/images/generations"
+}
+
+func getOpenAIModel() string {
+	if model := os.Getenv("OPENAI_MODEL"); model != "" {
+		return model
+	}
+	return "gpt-4o-mini"
+}
+
+func getOpenAIModelSearch() string {
+	if model := os.Getenv("OPENAI_MODEL_SEARCH"); model != "" {
+		return model
+	}
+	return "gpt-4o-mini-search-preview"
+}
+
+func getOpenAIImageModel() string {
+	if model := os.Getenv("OPENAI_IMAGE_MODEL"); model != "" {
+		return model
+	}
+	return "dall-e-3"
+}
 
 type OpenAIService struct {
 	APIKey string
@@ -56,7 +83,7 @@ type chatResponse struct {
 func NewOpenAIService() *OpenAIService {
 	return &OpenAIService{
 		APIKey: os.Getenv("OPEN_AI"),
-		Model:  openAIModel,
+		Model:  getOpenAIModel(),
 	}
 }
 
@@ -74,7 +101,7 @@ func (s *OpenAIService) Ask(systemPrompt, userPrompt string) (string, error) {
 * answering. It uses the web-search enabled model and turns the web_search_options on.
 **************************************************************************************/
 func (s *OpenAIService) AskWithWebSearch(systemPrompt, userPrompt string) (string, error) {
-	return s.ask(openAIModelSearch, systemPrompt, userPrompt, true)
+	return s.ask(getOpenAIModelSearch(), systemPrompt, userPrompt, true)
 }
 
 /**************************************************************************************
@@ -107,7 +134,7 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 		return "", fmt.Errorf("failed to marshal OpenAI request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, openAIChatURL, bytes.NewBuffer(payload))
+	req, err := http.NewRequest(http.MethodPost, getOpenAIChatURL(), bytes.NewBuffer(payload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create OpenAI request: %w", err)
 	}
@@ -177,7 +204,7 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 	}
 
 	reqBody := imageRequest{
-		Model:        openAIImageModel,
+		Model:        getOpenAIImageModel(),
 		Prompt:       prompt,
 		Size:         "1024x1024",
 		N:            1,
@@ -201,7 +228,7 @@ func (s *OpenAIService) GenerateImage(systemPrompt, userPrompt string) ([]byte, 
 			time.Sleep(backoff)
 		}
 
-		req, err := http.NewRequest(http.MethodPost, openAIImageURL, bytes.NewBuffer(payload))
+		req, err := http.NewRequest(http.MethodPost, getOpenAIImageURL(), bytes.NewBuffer(payload))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OpenAI image request: %w", err)
 		}
@@ -401,7 +428,7 @@ func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, err
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Image)
 
 	reqBody := visionRequest{
-		Model: openAIModel,
+		Model: getOpenAIModel(),
 		Messages: []visionMessage{
 			{
 				Role: "system",
@@ -424,7 +451,7 @@ func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, err
 		return "", fmt.Errorf("failed to marshal OCR request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, openAIChatURL, bytes.NewBuffer(payload))
+	req, err := http.NewRequest(http.MethodPost, getOpenAIChatURL(), bytes.NewBuffer(payload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create OCR request: %w", err)
 	}

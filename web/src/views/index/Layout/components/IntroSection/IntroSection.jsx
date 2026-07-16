@@ -47,6 +47,50 @@ export const IntroSection = () => {
   const [currentStep, setCurrentStep] = useState(null);
   const [selectedSubjects, setSelectedSubjects] = useState(new Set());
 
+  const FORM_STATE_KEY = "zapohteh-lesson-form";
+
+  // Load any previously saved form state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(FORM_STATE_KEY);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.title) setTitle(parsed.title);
+      if (parsed.input) setInput(parsed.input);
+      if (parsed.level) setLevel(parsed.level);
+      if (parsed.language) setLanguage(parsed.language);
+      if (parsed.writingStyle) setWritingStyle(parsed.writingStyle);
+      if (typeof parsed.searchWeb === "boolean") setSearchWeb(parsed.searchWeb);
+      if (parsed.selectedSubjects) {
+        setSelectedSubjects(new Set(parsed.selectedSubjects));
+      }
+    } catch (err) {
+      console.error("Failed to parse saved lesson form", err);
+    }
+  }, []);
+
+  // Persist form state to localStorage whenever it changes
+  useEffect(() => {
+    const state = {
+      title,
+      input,
+      level,
+      language,
+      writingStyle,
+      searchWeb,
+      selectedSubjects: Array.from(selectedSubjects),
+    };
+    localStorage.setItem(FORM_STATE_KEY, JSON.stringify(state));
+  }, [
+    title,
+    input,
+    level,
+    language,
+    writingStyle,
+    searchWeb,
+    selectedSubjects,
+  ]);
+
   const {
     data: subjects,
     loading: subjectsLoading,
@@ -114,6 +158,7 @@ export const IntroSection = () => {
             setTopic(parsed.topic);
             setFinished(true);
             setCurrentStep(3);
+            localStorage.removeItem(FORM_STATE_KEY);
             showToast({
               type: "success",
               message: "Course created successfully",
