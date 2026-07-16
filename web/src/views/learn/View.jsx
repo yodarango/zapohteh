@@ -315,14 +315,19 @@ export const LearnView = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-    fetch(TANJREEN_API_URL, {
+    const form = new FormData();
+    form.append("bookTitle", topic || "Untitled");
+    form.append("voice", "echo");
+    form.append("text", text);
+
+    // no-cors strips custom headers, so send the key via query parameter as
+    // documented in the Tanjreen API.
+    const url = `${TANJREEN_API_URL}?apiKey=${encodeURIComponent(TANJREEN_API_KEY)}`;
+
+    fetch(url, {
       method: "POST",
       mode: "no-cors",
-      headers: {
-        "Content-Type": "text/plain",
-        "X-API-Key": TANJREEN_API_KEY,
-      },
-      body: text,
+      body: form,
     });
 
     showToast({ type: "info", message: "Narration request sent" });
