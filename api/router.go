@@ -34,10 +34,10 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_TRANSFORM, models.AuthenticateAPIKey(Transform))
 	mux.HandleFunc(constants.ROUTE_GET_DOWNLOAD, models.AuthenticateAPIKey(DownloadAudiobook))
 
-	// serve generated research data (e.g. chapter images) from the data directory
+	// serve generated research data (e.g. chapter images) from the configured content directory
 	mux.Handle(
 		constants.ROUTE_DATA_FILES,
-		http.StripPrefix(constants.ROUTE_DATA_FILES, http.FileServer(http.Dir("data"))),
+		http.StripPrefix(constants.ROUTE_DATA_FILES, http.FileServer(http.Dir(utils.ContentDir()))),
 	)
 
 	// auth routes (no authentication required)

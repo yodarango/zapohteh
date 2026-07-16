@@ -51,7 +51,6 @@ const (
 
 const chaptersFileName = "chapters.md"
 const donePrefix = "✅ "
-const dataDir = "data"
 const imagesDirName = "images"
 
 // imageSystemPrompt explains to the image model what kind of summarizing image is
@@ -134,7 +133,7 @@ func GetCoverImagePath(userId uint, title string) string {
 * with its cover image path, reading progress, and subjects from the database.
 **************************************************************************************/
 func ListCourses(userId uint) ([]Course, error) {
-	userDir := filepath.Join(dataDir, fmt.Sprintf("user_%d", userId))
+	userDir := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId))
 	entries, err := os.ReadDir(userDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -339,7 +338,7 @@ func (r *Research) folderPath() string {
 		name = r.Topic
 	}
 	userDir := fmt.Sprintf("user_%d", r.UserID)
-	return filepath.Join("data", userDir, utils.SanitizeFilename(name))
+	return filepath.Join(utils.ContentDir(), userDir, utils.SanitizeFilename(name))
 }
 
 /**************************************************************************************
@@ -802,7 +801,7 @@ func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) er
 	}
 
 	// Update the course completion timestamp based on the current reading state.
-	folder := filepath.Join(dataDir, fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(courseTitle))
+	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(courseTitle))
 	total := countChapters(folder)
 
 	var readCount int
