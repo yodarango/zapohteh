@@ -548,6 +548,11 @@ export const LearnView = () => {
               <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
                 {chapter.title}
               </h4>
+
+              <div
+                className='research-content'
+                dangerouslySetInnerHTML={{ __html: marked.parse(chapter.body) }}
+              />
               {/* chapter heading with its summary image action */}
               <div className='mb-3 flex items-start justify-between gap-4'>
                 <div className='flex shrink-0 items-center gap-2'>
@@ -567,7 +572,7 @@ export const LearnView = () => {
                           : "ellipse-outline"
                       }
                     ></ion-icon>
-                    <span>Read</span>
+                    <span>Mark read</span>
                   </button>
                   <Button
                     secondary
@@ -580,16 +585,12 @@ export const LearnView = () => {
                     ) : (
                       <>
                         <ion-icon name='image-outline'></ion-icon>
-                        <span className='ml-2'>Img Summary</span>
+                        <span className='ml-2'>Menmonic summary</span>
                       </>
                     )}
                   </Button>
                 </div>
               </div>
-              <div
-                className='research-content'
-                dangerouslySetInnerHTML={{ __html: marked.parse(chapter.body) }}
-              />
             </section>
           );
         })}
