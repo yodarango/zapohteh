@@ -654,7 +654,7 @@ func (r *Research) GenerateChapterImage(chapter string) error {
 	// against the /data static route regardless of the current page URL. Each path
 	// segment is URL-encoded so spaces in the folder name don't break the markdown
 	// image syntax (a space inside an image URL would otherwise terminate the link).
-	imageRef := "/" + encodePathSegments(filepath.ToSlash(filepath.Join(folder, imagesDirName, fileName)))
+	imageRef := webDataPath(filepath.Join(folder, imagesDirName, fileName))
 	return insertImageReference(chapterFile, chapter, imageRef)
 }
 
@@ -715,7 +715,7 @@ func (r *Research) GenerateCoverImage() error {
 		return fmt.Errorf("failed to write cover image file: %w", err)
 	}
 
-	webPath := "/" + encodePathSegments(filepath.ToSlash(imagePath))
+	webPath := webDataPath(imagePath)
 	if err := r.SaveCoverImagePath(title, webPath); err != nil {
 		return fmt.Errorf("failed to save cover image path: %w", err)
 	}
@@ -912,6 +912,26 @@ func encodePathSegments(p string) string {
 		parts[i] = url.PathEscape(part)
 	}
 	return strings.Join(parts, "/")
+}
+
+/**************************************************************************************
+* webDataPath turns an absolute filesystem path under ContentDir into a web-absolute
+* path that is served by the /data/ static route. The result is URL-encoded per path
+* segment so spaces and special characters remain valid.
+**************************************************************************************/
+func webDataPath(absPath string) string {
+	absPath = filepath.Clean(absPath)
+	contentDir := filepath.Clean(utils.ContentDir())
+
+	rel, err := filepath.Rel(contentDir, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		// Fallback: if the path is not under ContentDir, encode it as-is with a single
+		// leading slash and avoid the double-slash that an absolute path would create.
+		p := strings.TrimPrefix(absPath, "/")
+		return "/" + encodePathSegments(filepath.ToSlash(p))
+	}
+
+	return "/" + encodePathSegments(filepath.ToSlash(filepath.Join("data", rel)))
 }
 
 /**************************************************************************************
