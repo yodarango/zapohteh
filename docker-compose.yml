@@ -14,11 +14,8 @@ services:
       - app-network
     volumes:
       - .:/app
-      - sqlite_data:/app/data
+      - ${HOST_DATA_PATH:-./data}:/app/data
 
 networks:
   app-network:
     driver: bridge
-volumes:
-  sqlite_data:
-    driver: local
