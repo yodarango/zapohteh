@@ -100,6 +100,7 @@ type Course struct {
 	ID             string     `json:"id"`
 	Name           string     `json:"name"`
 	CoverImagePath string     `json:"coverImagePath"`
+	Language       string     `json:"language"`
 	TotalChapters  int        `json:"totalChapters"`
 	ReadChapters   int        `json:"readChapters"`
 	Subjects       []Subject  `json:"subjects"`
@@ -145,9 +146,10 @@ func ListCourses(userId uint) ([]Course, error) {
 	coverPaths := make(map[string]string)
 	createdAts := make(map[string]time.Time)
 	completedAts := make(map[string]*time.Time)
+	languages := make(map[string]string)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT title, cover_image_path, created_at, completed_at FROM courses WHERE user_id = ?",
+			"SELECT title, cover_image_path, created_at, completed_at, language FROM courses WHERE user_id = ?",
 			userId,
 		)
 		if err == nil {
@@ -157,7 +159,8 @@ func ListCourses(userId uint) ([]Course, error) {
 				var path sql.NullString
 				var createdAt time.Time
 				var completedAt sql.NullTime
-				if err := rows.Scan(&title, &path, &createdAt, &completedAt); err == nil {
+				var language sql.NullString
+				if err := rows.Scan(&title, &path, &createdAt, &completedAt, &language); err == nil {
 					key := utils.SanitizeFilename(title)
 					if path.Valid && path.String != "" {
 						coverPaths[key] = path.String
@@ -165,6 +168,9 @@ func ListCourses(userId uint) ([]Course, error) {
 					createdAts[key] = createdAt
 					if completedAt.Valid {
 						completedAts[key] = &completedAt.Time
+					}
+					if language.Valid && language.String != "" {
+						languages[key] = language.String
 					}
 				}
 			}
@@ -224,6 +230,7 @@ func ListCourses(userId uint) ([]Course, error) {
 			ID:             name,
 			Name:           utils.ToTitleCase(name),
 			CoverImagePath: coverPaths[name],
+			Language:       languages[name],
 			TotalChapters:  total,
 			ReadChapters:   readCounts[name],
 			Subjects:       subjectMap[name],

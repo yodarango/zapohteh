@@ -69,6 +69,23 @@ func GetCourseID(userId uint, title string) (int, error) {
 	return 0, fmt.Errorf("could not get course id: %w", err)
 }
 
+// SaveCourseLanguage stores the language selected for a course, creating the
+// course row if it does not already exist.
+func SaveCourseLanguage(userId uint, title, language string) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	query := `
+		INSERT INTO courses (user_id, title, language)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, title) DO UPDATE SET
+			language = excluded.language,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := ModelsRepo.DB.Conn.Exec(query, userId, title, language)
+	return err
+}
+
 // SetCourseSubjects replaces the subjects linked to a user's course with the given ids.
 func SetCourseSubjects(userId uint, courseTitle string, subjectIDs []int) error {
 	courseId, err := GetCourseID(userId, courseTitle)
