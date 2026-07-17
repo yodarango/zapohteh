@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"zapohteh/internal/utils"
@@ -179,6 +180,23 @@ func SubjectColorMap(userId uint) (map[string][]Subject, error) {
 	return m, nil
 }
 
+// GetCourseLanguage returns the stored language for a user's course, or an empty
+// string when none has been saved.
+func GetCourseLanguage(userId uint, title string) string {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return ""
+	}
+	var lang sql.NullString
+	err := ModelsRepo.DB.Conn.QueryRow(
+		"SELECT language FROM courses WHERE user_id = ? AND title = ?",
+		userId, title,
+	).Scan(&lang)
+	if err != nil || !lang.Valid {
+		return ""
+	}
+	return lang.String
+}
+
 // DeleteCourse removes a user's course from the database and deletes its content
 // folder. Related course_subjects and chat_messages rows are removed automatically
 // via ON DELETE CASCADE. The reading_progress rows are cleaned up explicitly.
@@ -210,5 +228,131 @@ func DeleteCourse(userId uint, title string) error {
 		userId, title,
 	)
 
+	return nil
+}
+
+// UpdateCourse updates a course's title, language, and subjects. If the title
+// changes, the course folder is renamed and image references are updated to match.
+func UpdateCourse(userId uint, oldTitle, newTitle, language string, subjectIDs []int) (string, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return "", fmt.Errorf("database is not available")
+	}
+
+	oldTitle = utils.SanitizeFilename(oldTitle)
+	newTitle = utils.SanitizeFilename(newTitle)
+
+	if oldTitle == "" || newTitle == "" {
+		return "", fmt.Errorf("course title is required")
+	}
+
+	tx, err := ModelsRepo.DB.Conn.Begin()
+	if err != nil {
+		return "", err
+	}
+
+	var courseId int
+	err = tx.QueryRow(
+		"SELECT id FROM courses WHERE user_id = ? AND title = ?",
+		userId, oldTitle,
+	).Scan(&courseId)
+	if err != nil {
+		tx.Rollback()
+		return "", fmt.Errorf("course not found: %w", err)
+	}
+
+	_, err = tx.Exec(
+		"UPDATE courses SET title = ?, language = ? WHERE id = ?",
+		newTitle, language, courseId,
+	)
+	if err != nil {
+		tx.Rollback()
+		return "", fmt.Errorf("failed to update course: %w", err)
+	}
+
+	_, err = tx.Exec("DELETE FROM course_subjects WHERE course_id = ?", courseId)
+	if err != nil {
+		tx.Rollback()
+		return "", fmt.Errorf("failed to update subjects: %w", err)
+	}
+	for _, id := range subjectIDs {
+		_, err = tx.Exec(
+			"INSERT INTO course_subjects (course_id, subject_id) VALUES (?, ?)",
+			courseId, id,
+		)
+		if err != nil {
+			tx.Rollback()
+			return "", fmt.Errorf("failed to add subject: %w", err)
+		}
+	}
+
+	_, err = tx.Exec(
+		"UPDATE reading_progress SET course_title = ? WHERE user_id = ? AND course_title = ?",
+		newTitle, userId, oldTitle,
+	)
+	if err != nil {
+		tx.Rollback()
+		return "", fmt.Errorf("failed to update reading progress: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit course update: %w", err)
+	}
+
+	if oldTitle != newTitle {
+		userDir := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId))
+		oldFolder := filepath.Join(userDir, oldTitle)
+		newFolder := filepath.Join(userDir, newTitle)
+
+		if err := os.Rename(oldFolder, newFolder); err != nil {
+			return "", fmt.Errorf("failed to rename course folder: %w", err)
+		}
+
+		oldEncoded := encodePathSegments(oldTitle)
+		newEncoded := encodePathSegments(newTitle)
+
+		_, _ = ModelsRepo.DB.Conn.Exec(
+			"UPDATE courses SET cover_image_path = REPLACE(cover_image_path, ?, ?) WHERE id = ?",
+			oldEncoded, newEncoded, courseId,
+		)
+
+		if err := updateFolderReferences(newFolder, oldEncoded, newEncoded); err != nil {
+			return "", fmt.Errorf("failed to update image references: %w", err)
+		}
+	}
+
+	return newTitle, nil
+}
+
+// updateFolderReferences replaces an old encoded folder name with a new one in all
+// markdown files under the given folder.
+func updateFolderReferences(folder, oldEncoded, newEncoded string) error {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if err := updateFolderReferences(filepath.Join(folder, entry.Name()), oldEncoded, newEncoded); err != nil {
+				return err
+			}
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		filePath := filepath.Join(folder, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return err
+		}
+		content := string(data)
+		newContent := strings.ReplaceAll(content, oldEncoded, newEncoded)
+		if newContent == content {
+			continue
+		}
+		if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
-import { Button, Loading, Thumbnail, ConfirmationModal } from "@ds";
+import {
+  Button,
+  Loading,
+  Thumbnail,
+  ConfirmationModal,
+  Modal,
+  Input,
+  Select,
+} from "@ds";
 import {
   API_GET_TOPIC,
   API_POST_COURSE_COVER_IMAGE,
@@ -10,10 +18,11 @@ import {
   API_POST_READING_PROGRESS,
   API_GET_SUBJECTS,
   API_GET_COURSE_SUBJECTS,
-  API_POST_COURSE_SUBJECTS,
   API_DELETE_COURSE,
+  API_PUT_COURSE,
   API_BASE,
   ROUTE_HOME,
+  ROUTE_LEARN,
   ROUTE_COURSES,
   TANJREEN_API_URL,
   TANJREEN_API_KEY,
@@ -43,6 +52,7 @@ export const LearnView = () => {
 
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
+  const [courseLanguage, setCourseLanguage] = useState("");
   const [loading, setLoading] = useState(true);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
@@ -54,6 +64,11 @@ export const LearnView = () => {
   const [coverImageLoading, setCoverImageLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editLanguage, setEditLanguage] = useState("");
+  const [editSubjectIds, setEditSubjectIds] = useState(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,6 +107,7 @@ export const LearnView = () => {
         } else {
           setContent(topicResult.data?.content || "");
           setCoverImagePath(topicResult.data?.coverImagePath || "");
+          setCourseLanguage(topicResult.data?.language || "");
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
@@ -247,43 +263,6 @@ export const LearnView = () => {
     ? Math.round((readChapters.size / chapters.length) * 100)
     : 0;
 
-  const toggleSubject = async (subjectId) => {
-    const nextIds = new Set(courseSubjectIds);
-    if (nextIds.has(subjectId)) {
-      nextIds.delete(subjectId);
-    } else {
-      nextIds.add(subjectId);
-    }
-    setCourseSubjectIds(nextIds);
-    try {
-      await fetch(API_POST_COURSE_SUBJECTS, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          course: topic,
-          subjectIds: Array.from(nextIds),
-        }),
-      });
-      showToast({
-        type: "success",
-        message: "Subjects updated",
-      });
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to update subjects",
-      });
-      // revert on error
-      const reverted = new Set(courseSubjectIds);
-      if (reverted.has(subjectId)) {
-        reverted.delete(subjectId);
-      } else {
-        reverted.add(subjectId);
-      }
-      setCourseSubjectIds(reverted);
-    }
-  };
-
   const backendOrigin = API_BASE.startsWith("http")
     ? new URL(API_BASE).origin
     : window.location.origin;
@@ -397,6 +376,59 @@ export const LearnView = () => {
     }
   };
 
+  const openEditModal = () => {
+    setEditTitle(topic);
+    setEditLanguage(courseLanguage);
+    setEditSubjectIds(new Set(courseSubjectIds));
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    const title = editTitle.trim();
+    if (!title) {
+      showToast({ type: "danger", message: "Title is required" });
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const response = await fetch(
+        `${API_PUT_COURSE}/${encodeURIComponent(topic)}`,
+        {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            title,
+            language: editLanguage,
+            subjectIds: Array.from(editSubjectIds),
+          }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "Failed to update course");
+      }
+      showToast({ type: "success", message: "Course updated" });
+      setShowEditModal(false);
+      // Navigate to the new course URL if the title changed.
+      const newId = result.data?.id;
+      if (newId && newId !== topic) {
+        navigate(`${ROUTE_LEARN}/${encodeURIComponent(newId)}`, {
+          replace: true,
+        });
+      } else {
+        // Refresh the current page so the updated subjects/language are reflected.
+        window.location.reload();
+      }
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to update course",
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
@@ -420,19 +452,30 @@ export const LearnView = () => {
               />
             </div>
           )}
-          <button
-            type='button'
-            onClick={createCoverImage}
-            disabled={coverImageLoading}
-            className='absolute right-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
-          >
-            {coverImageLoading ? (
-              <Loading size={18} />
-            ) : (
-              <ion-icon name='image-outline' />
-            )}
-            <span>{coverImagePath ? "Recreate" : "Create"}</span>
-          </button>
+          <div className='absolute right-3 top-3 z-10 flex items-center gap-2'>
+            <button
+              type='button'
+              onClick={openEditModal}
+              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+              aria-label='Edit course'
+            >
+              <ion-icon name='create-outline' />
+              <span>Edit</span>
+            </button>
+            <button
+              type='button'
+              onClick={createCoverImage}
+              disabled={coverImageLoading}
+              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
+            >
+              {coverImageLoading ? (
+                <Loading size={18} />
+              ) : (
+                <ion-icon name='image-outline' />
+              )}
+              <span>{coverImagePath ? "Recreate" : "Create"}</span>
+            </button>
+          </div>
         </div>
 
         {chapters.length > 0 && (
@@ -559,51 +602,6 @@ export const LearnView = () => {
           </div>
         )}
 
-        {subjects.length > 0 && (
-          <div className='mb-4'>
-            <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-              Subjects
-            </h3>
-            <div className='flex flex-wrap items-center gap-2'>
-              {subjects.map((subject) => {
-                const selected = courseSubjectIds.has(subject.id);
-                return (
-                  <button
-                    key={subject.id}
-                    type='button'
-                    onClick={() => toggleSubject(subject.id)}
-                    className={`group flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
-                      selected
-                        ? ""
-                        : "border-dr-border bg-dr-surface hover:border-dr-text-muted"
-                    }`}
-                    style={
-                      selected
-                        ? {
-                            backgroundColor: subject.color,
-                            borderColor: subject.color,
-                            color: "#fff",
-                          }
-                        : {}
-                    }
-                    title={subject.name}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full border-2 transition-colors ${
-                        selected
-                          ? "border-white bg-white"
-                          : "border-current bg-transparent"
-                      }`}
-                      style={selected ? {} : { borderColor: subject.color }}
-                    />
-                    <span className='line-clamp-1'>{subject.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         <div className='mb-4'>
           <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Actions
@@ -641,6 +639,107 @@ export const LearnView = () => {
           confirmVariant='danger'
           isLoading={isDeleting}
         />
+
+        <Modal
+          open={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          title='Edit course'
+          zIndex={20}
+        >
+          <div className='flex flex-col gap-4'>
+            <div>
+              <label className='mb-1 block text-sm font-medium text-dr-text'>
+                Title
+              </label>
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder='Course title'
+              />
+            </div>
+            <div>
+              <label className='mb-1 block text-sm font-medium text-dr-text'>
+                Language
+              </label>
+              <Select
+                value={editLanguage}
+                onChange={(val) => setEditLanguage(val)}
+                options={[
+                  { value: "", label: "Select language" },
+                  { value: "english", label: "English" },
+                  { value: "spanish", label: "Spanish" },
+                  { value: "italian", label: "Italian" },
+                  { value: "german", label: "German" },
+                  { value: "koine greek", label: "Koine Greek" },
+                ]}
+              />
+            </div>
+            <div>
+              <label className='mb-1 block text-sm font-medium text-dr-text'>
+                Subjects
+              </label>
+              <div className='flex flex-wrap gap-2'>
+                {subjects.map((subject) => {
+                  const selected = editSubjectIds.has(subject.id);
+                  return (
+                    <button
+                      key={subject.id}
+                      type='button'
+                      onClick={() => {
+                        const next = new Set(editSubjectIds);
+                        if (next.has(subject.id)) next.delete(subject.id);
+                        else next.add(subject.id);
+                        setEditSubjectIds(next);
+                      }}
+                      className={`group flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                        selected
+                          ? ""
+                          : "border-dr-border bg-dr-surface hover:border-dr-text-muted"
+                      }`}
+                      style={
+                        selected
+                          ? {
+                              backgroundColor: subject.color,
+                              borderColor: subject.color,
+                              color: "#fff",
+                            }
+                          : {}
+                      }
+                      title={subject.name}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 rounded-full border-2 transition-colors ${
+                          selected
+                            ? "border-white bg-white"
+                            : "border-current bg-transparent"
+                        }`}
+                        style={selected ? {} : { borderColor: subject.color }}
+                      />
+                      <span className='line-clamp-1'>{subject.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className='flex justify-end gap-2'>
+              <Button
+                secondary
+                onClick={() => setShowEditModal(false)}
+                disabled={isSavingEdit}
+              >
+                Cancel
+              </Button>
+              <Button
+                primary
+                onClick={handleSaveEdit}
+                isLoading={isSavingEdit}
+                disabled={isSavingEdit}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </div>
   );

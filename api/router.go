@@ -25,6 +25,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
+	mux.HandleFunc(constants.ROUTE_PUT_COURSE, models.Authenticate(PutCourse))
 	mux.HandleFunc(constants.ROUTE_POST_COURSE_COVER_IMAGE, models.Authenticate(CreateCourseCoverImage))
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
@@ -354,6 +355,78 @@ func DeleteCourse(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
+* Updates a course's title, language, and subjects. If the title changes
+* the course folder is renamed and image references are updated to match.
+*********************************************************************/
+func PutCourse(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	rawID := r.PathValue("id")
+	oldCourseID, err := url.PathUnescape(rawID)
+	if err != nil {
+		httpResponse.Error = "Invalid course id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Title      string `json:"title"`
+		Language   string `json:"language"`
+		SubjectIDs []int  `json:"subjectIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Title) == "" {
+		httpResponse.Error = "title is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	newCourseID, err := models.UpdateCourse(
+		authUser.Id,
+		oldCourseID,
+		requestBody.Title,
+		requestBody.Language,
+		requestBody.SubjectIDs,
+	)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"id":       newCourseID,
+		"title":    requestBody.Title,
+		"language": requestBody.Language,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
 * Serves the assembled markdown content of a previously researched topic.
 *********************************************************************/
 func GetTopic(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +464,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		"topic":          name,
 		"content":        content,
 		"coverImagePath": models.GetCoverImagePath(authUser.Id, name),
+		"language":       models.GetCourseLanguage(authUser.Id, name),
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
