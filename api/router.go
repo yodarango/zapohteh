@@ -150,6 +150,18 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 
 	research.UserID = authUser.Id
 
+	// Persist the selected language early so the course row exists and has the
+	// language even if later steps (e.g. cover image generation) fail or are skipped.
+	courseTitle := research.Title
+	if strings.TrimSpace(courseTitle) == "" {
+		courseTitle = research.Topic
+	}
+	courseTitle = utils.SanitizeFilename(courseTitle)
+	if err := models.SaveCourseLanguage(authUser.Id, courseTitle, research.Language); err != nil {
+		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+		return
+	}
+
 	// configure the response as a Server-Sent Events stream
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

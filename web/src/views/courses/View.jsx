@@ -43,6 +43,19 @@ const TINTS = [
   "bg-fuchsia-100 text-fuchsia-700",
 ];
 
+const LANGUAGE_FLAGS = {
+  english: "🇬🇧",
+  spanish: "🇪🇸",
+  italian: "🇮🇹",
+  german: "🇩🇪",
+  "koine greek": "🇬🇷",
+};
+
+const languageFlag = (language) => {
+  if (!language) return null;
+  return LANGUAGE_FLAGS[language.toLowerCase()] || "🏳️";
+};
+
 /* *************************************************************************************************
  * Lists every researched topic stored in the backend data directory as a grid of course cards,
  * each linking to its assembled markdown at /learn/:courseId.
@@ -390,7 +403,12 @@ export const CoursesView = () => {
                   </div>
                 )}
                 <div className='flex items-center justify-between gap-2'>
-                  <span className='font-semibold text-dr-text line-clamp-2'>
+                  <span className='flex items-center gap-2 font-semibold text-dr-text line-clamp-2'>
+                    {course.language && (
+                      <span title={course.language}>
+                        {languageFlag(course.language)}
+                      </span>
+                    )}
                     {course.name}
                   </span>
                 </div>
@@ -446,9 +464,11 @@ export const CoursesView = () => {
                 {course.subjects && course.subjects.length > 0 ? (
                   <div className='mt-2 flex flex-wrap items-center gap-1.5'>
                     {course.subjects.map((subject) => (
-                      <div className='flex flex-wrap items-center gap-1.5'>
+                      <div
+                        key={subject.id}
+                        className='flex flex-wrap items-center gap-1.5'
+                      >
                         <span
-                          key={subject.id}
                           title={subject.name}
                           className='inline-block h-2.5 w-2.5 rounded-full'
                           style={{ backgroundColor: subject.color }}
