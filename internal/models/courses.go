@@ -323,6 +323,59 @@ func UpdateCourse(userId uint, oldTitle, newTitle, language string, subjectIDs [
 	return newTitle, nil
 }
 
+// ListCourseImages returns the web-absolute paths of every image file inside the
+// course's images folder. Files in nested directories are ignored.
+func ListCourseImages(userId uint, title string) ([]string, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return nil, fmt.Errorf("database is not available")
+	}
+
+	folder := filepath.Join(
+		utils.ContentDir(),
+		fmt.Sprintf("user_%d", userId),
+		utils.SanitizeFilename(title),
+		imagesDirName,
+	)
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to read images folder: %w", err)
+	}
+
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".gif" {
+			continue
+		}
+		imagePath := filepath.Join(folder, entry.Name())
+		paths = append(paths, webDataPath(imagePath))
+	}
+	return paths, nil
+}
+
+// SetCoverImagePath stores or updates the cover image path for a user's course,
+// creating the course row if it does not already exist.
+func SetCoverImagePath(userId uint, title, coverPath string) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	query := `
+		INSERT INTO courses (user_id, title, cover_image_path)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, title) DO UPDATE SET
+			cover_image_path = excluded.cover_image_path,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := ModelsRepo.DB.Conn.Exec(query, userId, title, coverPath)
+	return err
+}
+
 // updateFolderReferences replaces an old encoded folder name with a new one in all
 // markdown files under the given folder.
 func updateFolderReferences(folder, oldEncoded, newEncoded string) error {

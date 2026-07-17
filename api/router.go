@@ -26,6 +26,8 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE, models.Authenticate(PutCourse))
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_IMAGES, models.Authenticate(GetCourseImages))
+	mux.HandleFunc(constants.ROUTE_PUT_COURSE_COVER, models.Authenticate(PutCourseCover))
 	mux.HandleFunc(constants.ROUTE_POST_COURSE_COVER_IMAGE, models.Authenticate(CreateCourseCoverImage))
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
@@ -420,6 +422,108 @@ func PutCourse(w http.ResponseWriter, r *http.Request) {
 		"id":       newCourseID,
 		"title":    requestBody.Title,
 		"language": requestBody.Language,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns the web-absolute paths of all images stored in a course's images folder
+* so the user can pick an existing image as the cover thumbnail.
+*********************************************************************/
+func GetCourseImages(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	topic := r.URL.Query().Get("topic")
+	if strings.TrimSpace(topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	images, err := models.ListCourseImages(authUser.Id, topic)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":  topic,
+		"images": images,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Sets the cover image path for a course without generating a new image.
+*********************************************************************/
+func PutCourseCover(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Topic          string `json:"topic"`
+		CoverImagePath string `json:"coverImagePath"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+	if strings.TrimSpace(requestBody.CoverImagePath) == "" {
+		httpResponse.Error = "coverImagePath is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.SetCoverImagePath(authUser.Id, requestBody.Topic, requestBody.CoverImagePath); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":          requestBody.Topic,
+		"coverImagePath": requestBody.CoverImagePath,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil

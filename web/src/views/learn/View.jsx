@@ -20,6 +20,8 @@ import {
   API_GET_COURSE_SUBJECTS,
   API_DELETE_COURSE,
   API_PUT_COURSE,
+  API_GET_COURSE_IMAGES,
+  API_PUT_COURSE_COVER,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
@@ -69,6 +71,8 @@ export const LearnView = () => {
   const [editTitle, setEditTitle] = useState("");
   const [editLanguage, setEditLanguage] = useState("");
   const [editSubjectIds, setEditSubjectIds] = useState(new Set());
+  const [courseImages, setCourseImages] = useState([]);
+  const [selectedCoverImage, setSelectedCoverImage] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -376,11 +380,24 @@ export const LearnView = () => {
     }
   };
 
-  const openEditModal = () => {
+  const openEditModal = async () => {
     setEditTitle(topic);
     setEditLanguage(courseLanguage);
     setEditSubjectIds(new Set(courseSubjectIds));
+    setSelectedCoverImage(coverImagePath);
     setShowEditModal(true);
+    try {
+      const res = await fetch(
+        `${API_GET_COURSE_IMAGES}?topic=${encodeURIComponent(topic)}`,
+        { headers: authHeaders() },
+      );
+      const result = await res.json();
+      if (res.ok && result.data?.images) {
+        setCourseImages(result.data.images);
+      }
+    } catch {
+      // ignore image loading errors
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -407,6 +424,22 @@ export const LearnView = () => {
       if (!response.ok || result.error) {
         throw new Error(result.error || "Failed to update course");
       }
+
+      if (selectedCoverImage && selectedCoverImage !== coverImagePath) {
+        const coverRes = await fetch(API_PUT_COURSE_COVER, {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            topic,
+            coverImagePath: selectedCoverImage,
+          }),
+        });
+        const coverResult = await coverRes.json();
+        if (!coverRes.ok || coverResult.error) {
+          throw new Error(coverResult.error || "Failed to update cover image");
+        }
+      }
+
       showToast({ type: "success", message: "Course updated" });
       setShowEditModal(false);
       // Navigate to the new course URL if the title changed.
@@ -416,7 +449,7 @@ export const LearnView = () => {
           replace: true,
         });
       } else {
-        // Refresh the current page so the updated subjects/language are reflected.
+        // Refresh the current page so the updated subjects/language/cover are reflected.
         window.location.reload();
       }
     } catch (err) {
@@ -721,6 +754,41 @@ export const LearnView = () => {
                 })}
               </div>
             </div>
+            {courseImages.length > 0 && (
+              <div>
+                <label className='mb-1 block text-sm font-medium text-dr-text'>
+                  Thumbnail
+                </label>
+                <div className='grid grid-cols-3 gap-2'>
+                  {courseImages.map((image) => {
+                    const selected = selectedCoverImage === image;
+                    return (
+                      <button
+                        key={image}
+                        type='button'
+                        onClick={() => setSelectedCoverImage(image)}
+                        className={`relative overflow-hidden rounded-xl border-2 transition-all ${
+                          selected
+                            ? "border-dr-accent"
+                            : "border-transparent hover:border-dr-border"
+                        }`}
+                      >
+                        <img
+                          src={image}
+                          alt='Course thumbnail option'
+                          className='aspect-square w-full object-cover'
+                        />
+                        {selected && (
+                          <div className='absolute right-1 top-1 rounded-full bg-dr-accent p-1 text-white'>
+                            <ion-icon name='checkmark-outline' />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className='flex justify-end gap-2'>
               <Button
                 secondary
