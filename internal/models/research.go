@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -50,6 +51,8 @@ const (
 )
 
 const chaptersFileName = "chapters.md"
+const contentFileName = "content.md"
+const highlightsFileName = "highlights.json"
 const donePrefix = "✅ "
 const imagesDirName = "images"
 
@@ -558,12 +561,17 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 }
 
 /**************************************************************************************
-* ReadContent assembles the full research of a topic into a single markdown document.
-* It reads the chapters file for the order and then concatenates every chapter file
-* that has already been written.
+* ReadContent returns the full research of a topic as a single markdown document. If a
+* user-edited content.md file exists, it is returned directly; otherwise the per-chapter
+* files are assembled into a single document.
 **************************************************************************************/
 func (r *Research) ReadContent() (string, error) {
 	folder := r.folderPath()
+
+	contentPath := filepath.Join(folder, contentFileName)
+	if data, err := os.ReadFile(contentPath); err == nil {
+		return string(data), nil
+	}
 
 	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
 	if err != nil {
@@ -597,6 +605,77 @@ func (r *Research) ReadContent() (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+/**************************************************************************************
+* WriteRawContent writes the user-edited markdown content to a single content.md file in
+* the course folder. Subsequent reads will use this file instead of assembling chapters.
+**************************************************************************************/
+func (r *Research) WriteRawContent(content string) error {
+	folder := r.folderPath()
+	if err := os.MkdirAll(folder, 0755); err != nil {
+		return fmt.Errorf("failed to create topic folder: %w", err)
+	}
+	contentPath := filepath.Join(folder, contentFileName)
+	if err := os.WriteFile(contentPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write content file: %w", err)
+	}
+	return nil
+}
+
+/**************************************************************************************
+* ReadRawContent returns the editable markdown for a topic. If a user-edited content.md
+* file exists it is returned directly; otherwise the assembled chapter content is returned.
+**************************************************************************************/
+func (r *Research) ReadRawContent() (string, error) {
+	folder := r.folderPath()
+	contentPath := filepath.Join(folder, contentFileName)
+	if data, err := os.ReadFile(contentPath); err == nil {
+		return string(data), nil
+	}
+	return r.ReadContent()
+}
+
+// Highlight represents a user-created text highlight stored in a course folder.
+type Highlight struct {
+	Text  string `json:"text"`
+	Color string `json:"color"`
+}
+
+// ReadHighlights reads the persisted highlights for a course.
+func ReadHighlights(userId uint, title string) ([]Highlight, error) {
+	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(title))
+	data, err := os.ReadFile(filepath.Join(folder, highlightsFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Highlight{}, nil
+		}
+		return nil, fmt.Errorf("failed to read highlights: %w", err)
+	}
+
+	var highlights []Highlight
+	if err := json.Unmarshal(data, &highlights); err != nil {
+		return nil, fmt.Errorf("failed to parse highlights: %w", err)
+	}
+	return highlights, nil
+}
+
+// WriteHighlights persists the highlights for a course.
+func WriteHighlights(userId uint, title string, highlights []Highlight) error {
+	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(title))
+	if err := os.MkdirAll(folder, 0755); err != nil {
+		return fmt.Errorf("failed to create topic folder: %w", err)
+	}
+
+	data, err := json.MarshalIndent(highlights, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode highlights: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(folder, highlightsFileName), data, 0644); err != nil {
+		return fmt.Errorf("failed to write highlights: %w", err)
+	}
+	return nil
 }
 
 // markdownLinkPattern matches markdown links [text](url).

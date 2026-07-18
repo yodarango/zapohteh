@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -22,6 +22,10 @@ import {
   API_PUT_COURSE,
   API_GET_COURSE_IMAGES,
   API_PUT_COURSE_COVER,
+  API_GET_COURSE_MD,
+  API_PUT_COURSE_MD,
+  API_GET_COURSE_HIGHLIGHTS,
+  API_PUT_COURSE_HIGHLIGHTS,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
@@ -73,6 +77,22 @@ export const LearnView = () => {
   const [editSubjectIds, setEditSubjectIds] = useState(new Set());
   const [courseImages, setCourseImages] = useState([]);
   const [selectedCoverImage, setSelectedCoverImage] = useState("");
+  const [isEditingContent, setIsEditingContent] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [highlights, setHighlights] = useState([]);
+  const [activeHighlightColor, setActiveHighlightColor] = useState("");
+  const contentRef = useRef(null);
+
+  const HIGHLIGHT_COLORS = [
+    "#ffeb3b",
+    "#ff9f43",
+    "#ff6b6b",
+    "#48dbfb",
+    "#1dd1a1",
+    "#f368e0",
+    "#a29bfe",
+  ];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,6 +150,20 @@ export const LearnView = () => {
             new Set(courseSubjectsResult.data.map((s) => s.id)),
           );
         }
+
+        // Load saved highlights.
+        try {
+          const highlightsRes = await fetch(
+            `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
+            { headers: authHeaders() },
+          );
+          const highlightsResult = await highlightsRes.json();
+          if (highlightsRes.ok && highlightsResult.data?.highlights) {
+            setHighlights(highlightsResult.data.highlights);
+          }
+        } catch {
+          // ignore highlights loading errors
+        }
       } catch (err) {
         if (err.name !== "AbortError")
           showToast({
@@ -142,6 +176,59 @@ export const LearnView = () => {
     })();
     return () => controller.abort();
   }, [topic]);
+
+  useEffect(() => {
+    if (!contentRef.current || isEditingContent || highlights.length === 0) {
+      return;
+    }
+
+    const container = contentRef.current;
+
+    // Remove existing highlights so we can re-apply cleanly.
+    container.querySelectorAll("mark.highlight").forEach((mark) => {
+      const parent = mark.parentNode;
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    });
+
+    // Apply each highlight to text nodes in the rendered content.
+    highlights.forEach(({ text, color }) => {
+      if (!text) return;
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false,
+      );
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement?.closest("mark.highlight")) continue;
+        if (node.textContent.includes(text)) {
+          textNodes.push(node);
+        }
+      }
+
+      textNodes.forEach((textNode) => {
+        const parts = textNode.textContent.split(text);
+        if (parts.length <= 1) return;
+
+        const fragment = document.createDocumentFragment();
+        parts.forEach((part, index) => {
+          fragment.appendChild(document.createTextNode(part));
+          if (index < parts.length - 1) {
+            const mark = document.createElement("mark");
+            mark.className = "highlight";
+            mark.style.backgroundColor = color;
+            mark.style.borderRadius = "2px";
+            mark.textContent = text;
+            fragment.appendChild(mark);
+          }
+        });
+        textNode.parentNode.replaceChild(fragment, textNode);
+      });
+    });
+  }, [highlights, content, isEditingContent]);
 
   const createImage = async (chapter) => {
     setGenerating((prev) => new Set(prev).add(chapter));
@@ -462,9 +549,102 @@ export const LearnView = () => {
     }
   };
 
+  const startEditContent = async () => {
+    try {
+      const res = await fetch(
+        `${API_GET_COURSE_MD}?topic=${encodeURIComponent(topic)}`,
+        { headers: authHeaders() },
+      );
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Failed to load markdown");
+      }
+      setEditContent(result.data?.content || "");
+      setIsEditingContent(true);
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to load markdown",
+      });
+    }
+  };
+
+  const saveContent = async () => {
+    setIsSavingContent(true);
+    try {
+      const res = await fetch(API_PUT_COURSE_MD, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          topic,
+          content: editContent,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Failed to save markdown");
+      }
+      setContent(marked(editContent));
+      setIsEditingContent(false);
+      showToast({ type: "success", message: "Markdown saved" });
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to save markdown",
+      });
+    } finally {
+      setIsSavingContent(false);
+    }
+  };
+
+  const cancelEditContent = () => {
+    setIsEditingContent(false);
+    setEditContent("");
+  };
+
+  const saveHighlights = async (newHighlights) => {
+    try {
+      const res = await fetch(API_PUT_COURSE_HIGHLIGHTS, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          topic,
+          highlights: newHighlights,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Failed to save highlights");
+      }
+      setHighlights(newHighlights);
+      showToast({ type: "success", message: "Highlight saved" });
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to save highlights",
+      });
+    }
+  };
+
+  const handleTextSelection = () => {
+    if (!activeHighlightColor || isEditingContent) return;
+
+    const selection = window.getSelection();
+    const text = selection.toString().trim();
+    if (!text) return;
+
+    const newHighlights = [...highlights, { text, color: activeHighlightColor }];
+    saveHighlights(newHighlights);
+    selection.removeAllRanges();
+  };
+
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
-      <div className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+      <div
+        ref={contentRef}
+        onMouseUp={handleTextSelection}
+        className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+      >
         <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
           <ion-icon name='arrow-back-outline'></ion-icon>
           <span className='ml-2'>Back</span>
@@ -530,73 +710,104 @@ export const LearnView = () => {
           </div>
         )}
 
-        {intro && (
-          <div
-            className='research-content'
-            dangerouslySetInnerHTML={{ __html: marked.parse(intro) }}
-          />
-        )}
-
-        {chapters.map((chapter) => {
-          const isGenerating = generating.has(chapter.title);
-          return (
-            <section
-              key={chapter.title}
-              id={chapterSlug(chapter.title)}
-              className='mt-8 scroll-mt-6'
-            >
-              <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
-                {chapter.title}
-              </h4>
-
+        {isEditingContent ? (
+          <div className='flex flex-col gap-4'>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className='min-h-[500px] w-full rounded-2xl border border-dr-border bg-dr-surface p-4 font-mono text-sm text-dr-text'
+            />
+            <div className='flex justify-end gap-2'>
+              <Button
+                secondary
+                onClick={cancelEditContent}
+                disabled={isSavingContent}
+              >
+                Cancel
+              </Button>
+              <Button
+                primary
+                onClick={saveContent}
+                isLoading={isSavingContent}
+                disabled={isSavingContent}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {intro && (
               <div
                 className='research-content'
-                dangerouslySetInnerHTML={{ __html: marked.parse(chapter.body) }}
+                dangerouslySetInnerHTML={{ __html: marked.parse(intro) }}
               />
-              {/* chapter heading with its summary image action */}
-              <div className='mb-3 flex items-start justify-between gap-4'>
-                <div className='flex shrink-0 items-center gap-2'>
-                  <button
-                    type='button'
-                    onClick={() => toggleRead(chapter.title)}
-                    className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                      readChapters.has(chapter.title)
-                        ? "border-dr-success bg-dr-success/10 text-dr-success"
-                        : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
-                    }`}
-                  >
-                    <ion-icon
-                      name={
-                        readChapters.has(chapter.title)
-                          ? "checkmark-circle"
-                          : "ellipse-outline"
-                      }
-                    ></ion-icon>
-                    <span>Mark read</span>
-                  </button>
-                  <Button
-                    secondary
-                    className='shrink-0 text-sm'
-                    disabled={isGenerating}
-                    onClick={() => createImage(chapter.title)}
-                  >
-                    {isGenerating ? (
-                      <Loading size={18} />
-                    ) : (
-                      <>
-                        <ion-icon name='image-outline'></ion-icon>
-                        <span className='ml-2'>Menmonic summary</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </section>
-          );
-        })}
+            )}
+
+            {chapters.map((chapter) => {
+              const isGenerating = generating.has(chapter.title);
+              return (
+                <section
+                  key={chapter.title}
+                  id={chapterSlug(chapter.title)}
+                  className='mt-8 scroll-mt-6'
+                >
+                  <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
+                    {chapter.title}
+                  </h4>
+
+                  <div
+                    className='research-content'
+                    dangerouslySetInnerHTML={{
+                      __html: marked.parse(chapter.body),
+                    }}
+                  />
+                  {/* chapter heading with its summary image action */}
+                  <div className='mb-3 flex items-start justify-between gap-4'>
+                    <div className='flex shrink-0 items-center gap-2'>
+                      <button
+                        type='button'
+                        onClick={() => toggleRead(chapter.title)}
+                        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                          readChapters.has(chapter.title)
+                            ? "border-dr-success bg-dr-success/10 text-dr-success"
+                            : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
+                        }`}
+                      >
+                        <ion-icon
+                          name={
+                            readChapters.has(chapter.title)
+                              ? "checkmark-circle"
+                              : "ellipse-outline"
+                          }
+                        ></ion-icon>
+                        <span>Mark read</span>
+                      </button>
+                      <Button
+                        secondary
+                        className='shrink-0 text-sm'
+                        disabled={isGenerating}
+                        onClick={() => createImage(chapter.title)}
+                      >
+                        {isGenerating ? (
+                          <Loading size={18} />
+                        ) : (
+                          <>
+                            <ion-icon name='image-outline'></ion-icon>
+                            <span className='ml-2'>Menmonic summary</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+          </>
+        )}
       </div>
 
-      <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+      <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full max-w-[400px]'>
         {chapters.length > 0 && (
           <div className='py-4'>
             <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
@@ -637,6 +848,38 @@ export const LearnView = () => {
         )}
 
         <div className='mb-4'>
+          <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+            Highlighter
+          </h3>
+          <div className='flex flex-wrap items-center gap-2'>
+            {HIGHLIGHT_COLORS.map((color) => {
+              const selected = activeHighlightColor === color;
+              return (
+                <button
+                  key={color}
+                  type='button'
+                  onClick={() =>
+                    setActiveHighlightColor(selected ? "" : color)
+                  }
+                  className={`h-8 w-8 rounded-full border-2 transition-transform ${
+                    selected
+                      ? "border-dr-text scale-110"
+                      : "border-transparent hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: color }}
+                  title={selected ? "Disable highlighter" : "Select color"}
+                />
+              );
+            })}
+          </div>
+          <p className='mt-1 text-xs text-dr-text-muted'>
+            {activeHighlightColor
+              ? "Drag to highlight text"
+              : "Choose a color to start highlighting"}
+          </p>
+        </div>
+
+        <div className='mb-4'>
           <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Actions
           </h3>
@@ -648,6 +891,10 @@ export const LearnView = () => {
             <Button secondary className='w-full' onClick={narrate}>
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
+            </Button>
+            <Button secondary className='w-full' onClick={startEditContent}>
+              <ion-icon name='create-outline'></ion-icon>
+              <span className='ml-2'>Edit content</span>
             </Button>
             <Button
               danger

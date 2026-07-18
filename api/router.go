@@ -28,6 +28,10 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE, models.Authenticate(PutCourse))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_IMAGES, models.Authenticate(GetCourseImages))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_COVER, models.Authenticate(PutCourseCover))
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_MD, models.Authenticate(GetCourseMD))
+	mux.HandleFunc(constants.ROUTE_PUT_COURSE_MD, models.Authenticate(PutCourseMD))
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_HIGHLIGHTS, models.Authenticate(GetCourseHighlights))
+	mux.HandleFunc(constants.ROUTE_PUT_COURSE_HIGHLIGHTS, models.Authenticate(PutCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_POST_COURSE_COVER_IMAGE, models.Authenticate(CreateCourseCoverImage))
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
@@ -524,6 +528,196 @@ func PutCourseCover(w http.ResponseWriter, r *http.Request) {
 	httpResponse.Data = map[string]interface{}{
 		"topic":          requestBody.Topic,
 		"coverImagePath": requestBody.CoverImagePath,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns the raw markdown content of a course so it can be edited.
+*********************************************************************/
+func GetCourseMD(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	topic := r.URL.Query().Get("topic")
+	if strings.TrimSpace(topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	research := models.Research{Title: topic, UserID: authUser.Id}
+	content, err := research.ReadRawContent()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":   topic,
+		"content": content,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Writes the edited markdown content back to the course folder as content.md.
+*********************************************************************/
+func PutCourseMD(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Topic   string `json:"topic"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	research := models.Research{Title: requestBody.Topic, UserID: authUser.Id}
+	if err := research.WriteRawContent(requestBody.Content); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":   requestBody.Topic,
+		"content": requestBody.Content,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns the saved text highlights for a course.
+*********************************************************************/
+func GetCourseHighlights(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	topic := r.URL.Query().Get("topic")
+	if strings.TrimSpace(topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	highlights, err := models.ReadHighlights(authUser.Id, topic)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":      topic,
+		"highlights": highlights,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Saves the text highlights for a course.
+*********************************************************************/
+func PutCourseHighlights(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Topic      string                `json:"topic"`
+		Highlights []models.Highlight    `json:"highlights"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Topic) == "" {
+		httpResponse.Error = "topic is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.WriteHighlights(authUser.Id, requestBody.Topic, requestBody.Highlights); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"topic":      requestBody.Topic,
+		"highlights": requestBody.Highlights,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil
