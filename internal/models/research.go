@@ -690,7 +690,7 @@ func getCourseID(userId uint, title string) (int, error) {
 }
 
 // AllCourseHighlight represents a single course highlight enriched with the course
-// title, cover image and the highlight color for rendering in the highlights feed.
+// title, cover image, highlight color and course subjects for rendering in the highlights feed.
 type AllCourseHighlight struct {
 	ID             int       `json:"id"`
 	CourseID       int       `json:"courseId"`
@@ -701,6 +701,7 @@ type AllCourseHighlight struct {
 	Chapter        string    `json:"chapter"`
 	Text           string    `json:"text"`
 	Note           string    `json:"note"`
+	Subjects       []Subject `json:"subjects"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -1167,15 +1168,15 @@ func (r *Research) SaveCoverImagePath(title, path string) error {
 }
 
 /**************************************************************************************
-* GetReadChapters returns the titles of chapters that have been marked as read for a
-* given course by a given user.
+* GetReadChapters returns the zero-based indices of chapters that have been marked as
+* read for a given course by a given user.
 **************************************************************************************/
-func GetReadChapters(userId uint, courseTitle string) ([]string, error) {
+func GetReadChapters(userId uint, courseTitle string) ([]int, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
-		return []string{}, nil
+		return []int{}, nil
 	}
 	rows, err := ModelsRepo.DB.Conn.Query(
-		"SELECT chapter FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1",
+		"SELECT chapter_index FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1 ORDER BY chapter_index",
 		userId, courseTitle,
 	)
 	if err != nil {
@@ -1183,9 +1184,9 @@ func GetReadChapters(userId uint, courseTitle string) ([]string, error) {
 	}
 	defer rows.Close()
 
-	chapters := []string{}
+	chapters := []int{}
 	for rows.Next() {
-		var chapter string
+		var chapter int
 		if err := rows.Scan(&chapter); err != nil {
 			return nil, err
 		}
@@ -1198,14 +1199,14 @@ func GetReadChapters(userId uint, courseTitle string) ([]string, error) {
 * SaveReadingProgress marks a chapter as read or unread for a given user's course and
 * updates the course's completed_at timestamp when all chapters are read.
 **************************************************************************************/
-func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) error {
+func SaveReadingProgress(userId uint, courseTitle string, chapterIndex int, read bool) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
 	query := `
-		INSERT INTO reading_progress (user_id, course_title, chapter, read)
+		INSERT INTO reading_progress (user_id, course_title, chapter_index, read)
 		VALUES (?, ?, ?, ?)
-		ON CONFLICT(user_id, course_title, chapter) DO UPDATE SET
+		ON CONFLICT(user_id, course_title, chapter_index) DO UPDATE SET
 			read = excluded.read,
 			updated_at = CURRENT_TIMESTAMP
 	`
@@ -1213,7 +1214,7 @@ func SaveReadingProgress(userId uint, courseTitle, chapter string, read bool) er
 	if read {
 		readFlag = 1
 	}
-	if _, err := ModelsRepo.DB.Conn.Exec(query, userId, courseTitle, chapter, readFlag); err != nil {
+	if _, err := ModelsRepo.DB.Conn.Exec(query, userId, courseTitle, chapterIndex, readFlag); err != nil {
 		return err
 	}
 

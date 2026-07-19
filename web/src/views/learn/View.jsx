@@ -61,7 +61,7 @@ export const LearnView = () => {
   const [loading, setLoading] = useState(true);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
-  // titles of chapters that have been marked as read
+  // zero-based indices of chapters that have been marked as read
   const [readChapters, setReadChapters] = useState(new Set());
   // all available subjects and the ids currently assigned to this course
   const [subjects, setSubjects] = useState([]);
@@ -216,7 +216,7 @@ export const LearnView = () => {
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
-          setReadChapters(new Set(progressResult.data));
+          setReadChapters(new Set(progressResult.data.map((i) => Number(i))));
         }
 
         if (subjectsResult.data && Array.isArray(subjectsResult.data)) {
@@ -347,19 +347,23 @@ export const LearnView = () => {
 
   const { intro, chapters } = splitChapters(content);
 
-  const toggleRead = async (chapter) => {
-    const nextRead = !readChapters.has(chapter);
+  const toggleRead = async (chapterIndex) => {
+    const nextRead = !readChapters.has(chapterIndex);
     setReadChapters((prev) => {
       const next = new Set(prev);
-      if (nextRead) next.add(chapter);
-      else next.delete(chapter);
+      if (nextRead) next.add(chapterIndex);
+      else next.delete(chapterIndex);
       return next;
     });
     try {
       await fetch(API_POST_READING_PROGRESS, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ course: topic, chapter, read: nextRead }),
+        body: JSON.stringify({
+          course: topic,
+          chapterIndex,
+          read: nextRead,
+        }),
       });
       showToast({
         type: "success",
@@ -373,8 +377,8 @@ export const LearnView = () => {
       // revert on error
       setReadChapters((prev) => {
         const next = new Set(prev);
-        if (nextRead) next.delete(chapter);
-        else next.add(chapter);
+        if (nextRead) next.delete(chapterIndex);
+        else next.add(chapterIndex);
         return next;
       });
     }
@@ -775,7 +779,7 @@ export const LearnView = () => {
           />
         )}
 
-        {chapters.map((chapter) => {
+        {chapters.map((chapter, chapterIndex) => {
           const isGenerating = generating.has(chapter.title);
           return (
             <section
@@ -801,16 +805,16 @@ export const LearnView = () => {
                     <div className='flex shrink-0 items-center gap-2'>
                       <button
                         type='button'
-                        onClick={() => toggleRead(chapter.title)}
+                        onClick={() => toggleRead(chapterIndex)}
                         className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                          readChapters.has(chapter.title)
+                          readChapters.has(chapterIndex)
                             ? "border-dr-success bg-dr-success/10 text-dr-success"
                             : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
                         }`}
                       >
                         <ion-icon
                           name={
-                            readChapters.has(chapter.title)
+                            readChapters.has(chapterIndex)
                               ? "checkmark-circle"
                               : "ellipse-outline"
                           }
@@ -941,8 +945,8 @@ export const LearnView = () => {
               </button>
             </div>
             <ul className={`flex flex-col gap-1 ${!isChaptersOpen ? 'md:hidden' : ''}`}>
-              {chapters.map((chapter) => {
-                const isRead = readChapters.has(chapter.title);
+              {chapters.map((chapter, chapterIndex) => {
+                const isRead = readChapters.has(chapterIndex);
                 return (
                   <li key={chapter.title}>
                     <button

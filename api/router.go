@@ -618,6 +618,11 @@ func GetAllCourseHighlights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	subjectMap, _ := models.SubjectColorMap(authUser.Id)
+	for i := range highlights {
+		highlights[i].Subjects = subjectMap[highlights[i].CourseTitle]
+	}
+
 	httpResponse.Data = map[string]interface{}{
 		"highlights": highlights,
 		"total":      total,
@@ -1151,9 +1156,10 @@ func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var requestBody struct {
-		Course  string `json:"course"`
-		Chapter string `json:"chapter"`
-		Read    bool   `json:"read"`
+		Course      string `json:"course"`
+		Chapter     string `json:"chapter"`
+		ChapterIndex int   `json:"chapterIndex"`
+		Read        bool   `json:"read"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&requestBody)
@@ -1165,15 +1171,15 @@ func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(requestBody.Course) == "" || strings.TrimSpace(requestBody.Chapter) == "" {
-		httpResponse.Error = "course and chapter are required"
+	if strings.TrimSpace(requestBody.Course) == "" {
+		httpResponse.Error = "course is required"
 		httpResponse.Success = false
 		httpResponse.Data = nil
 		httpResponse.Send(w)
 		return
 	}
 
-	err = models.SaveReadingProgress(authUser.Id, requestBody.Course, requestBody.Chapter, requestBody.Read)
+	err = models.SaveReadingProgress(authUser.Id, requestBody.Course, requestBody.ChapterIndex, requestBody.Read)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false

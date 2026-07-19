@@ -96,12 +96,31 @@ export const HighlightCard = ({ highlight, onDelete }) => {
         </div>
 
         <div className='border-t border-black/10 bg-white px-4 py-4'>
-          {highlight.note && (
-            <p className='text-sm leading-relaxed text-black'>
-              <span className='mr-2 font-semibold'>{highlight.courseTitle}</span>
-              {highlight.note}
-            </p>
-          )}
+        {highlight.note && (
+          <p className='text-sm leading-relaxed text-black'>
+            {highlight.subjects && highlight.subjects.length > 0 ? (
+              highlight.subjects.map((subject) => (
+                <span
+                  key={subject.id}
+                  className='mr-2 inline-flex items-center gap-1.5'
+                >
+                  <span
+                    className='inline-block h-2.5 w-2.5 rounded-full'
+                    style={{ backgroundColor: subject.color }}
+                    title={subject.name}
+                  />
+                  <span className='font-semibold'>{subject.name}</span>
+                </span>
+              ))
+            ) : (
+              <span className='mr-2 inline-flex items-center gap-1.5'>
+                <span className='inline-block h-2.5 w-2.5 rounded-full bg-gray-200' />
+                <span className='font-semibold'>General</span>
+              </span>
+            )}
+            {highlight.note}
+          </p>
+        )}
         </div>
       </article>
 
