@@ -2,7 +2,6 @@ package models
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -51,8 +50,6 @@ const (
 )
 
 const chaptersFileName = "chapters.md"
-const contentFileName = "content.md"
-const highlightsFileName = "highlights.json"
 const donePrefix = "✅ "
 const imagesDirName = "images"
 
@@ -482,13 +479,16 @@ func (r *Research) ElaborateChapters() error {
 
 /**************************************************************************************
 * elaborateChapter asks the AI model to describe a single chapter and writes the
-* description to a markdown file named after the chapter in camelCase. Already
-* described chapters are provided to the model as context.
+* description to a numbered markdown file (e.g. 1_introduction.md). Already described
+* chapters are provided to the model as context.
 **************************************************************************************/
 func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []string) error {
+	chapterIndex := len(done) + 1
+
 	var previousContent string
 	if len(done) > 0 {
-		prevFile := filepath.Join(folder, utils.ToCamelCase(done[len(done)-1])+".md")
+		prevIndex := len(done)
+		prevFile := chapterFilePath(folder, done[len(done)-1], prevIndex)
 		if data, err := os.ReadFile(prevFile); err == nil {
 			previousContent = string(data)
 		}
@@ -534,7 +534,7 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 	When the user provides the content of the previous chapter, write the current chapter so it flows naturally from it. Do not repeat the previous chapter content; build upon it so the reader feels a continuous narrative.
 	Do not introduce the topic, chapter title, or purpose of the chpater. For example, do not say this chapters delves into..., or this chapter explains... Simply describe the content. THat's it.
 	The user may give you a list of chapters that they already have the description for so you know what they are missing.
-	Remember, you must omit the title of the chapter. just elaborate on it.
+	Remember, you must omit the title of the chapter. just elaborate on it. NEVERE NEVER give the same title to more than one chapter.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
 	%s`, r.contentInstructions())
 
@@ -551,7 +551,7 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 		return err
 	}
 
-	chapterFile := filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
+	chapterFile := filepath.Join(folder, fmt.Sprintf("%d_%s.md", chapterIndex, utils.ToCamelCase(chapter)))
 	err = os.WriteFile(chapterFile, []byte(description), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write chapter file: %w", err)
@@ -560,18 +560,56 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 	return nil
 }
 
+// chapterIndexFromFile reads chapters.md and returns the 1-based index of the given
+// chapter title, or -1 if it is not found.
+func chapterIndexFromFile(folder, chapter string) int {
+	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
+	if err != nil {
+		return -1
+	}
+	idx := 1
+	for _, line := range strings.Split(string(data), "\n") {
+		title := strings.TrimSpace(line)
+		if title == "" {
+			continue
+		}
+		title = strings.TrimSpace(strings.TrimPrefix(title, donePrefix))
+		if title == chapter {
+			return idx
+		}
+		idx++
+	}
+	return -1
+}
+
+// chapterFilePath returns the path to a chapter's markdown file. Files are named
+// with a 1-based numeric prefix to avoid collisions when two chapters share the
+// same title (e.g. 1_introduction.md). If the numbered file does not exist, it
+// falls back to the legacy camelCase filename for backwards compatibility.
+func chapterFilePath(folder, chapter string, index int) string {
+	numbered := filepath.Join(folder, fmt.Sprintf("%d_%s.md", index, utils.ToCamelCase(chapter)))
+	if _, err := os.Stat(numbered); err == nil {
+		return numbered
+	}
+	return filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
+}
+
+// chapterFileByTitle finds the markdown file for a chapter by title, using the
+// order declared in chapters.md.
+func chapterFileByTitle(folder, chapter string) string {
+	idx := chapterIndexFromFile(folder, chapter)
+	if idx <= 0 {
+		return filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
+	}
+	return chapterFilePath(folder, chapter, idx)
+}
+
 /**************************************************************************************
-* ReadContent returns the full research of a topic as a single markdown document. If a
-* user-edited content.md file exists, it is returned directly; otherwise the per-chapter
-* files are assembled into a single document.
+* ReadContent returns the full research of a topic as a single markdown document. The
+* per-chapter files are assembled in the order declared in chapters.md.
 **************************************************************************************/
 func (r *Research) ReadContent() (string, error) {
 	folder := r.folderPath()
-
-	contentPath := filepath.Join(folder, contentFileName)
-	if data, err := os.ReadFile(contentPath); err == nil {
-		return string(data), nil
-	}
 
 	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
 	if err != nil {
@@ -586,6 +624,7 @@ func (r *Research) ReadContent() (string, error) {
 	var b strings.Builder
 	b.WriteString("# " + heading + "\n\n")
 
+	idx := 1
 	for _, line := range strings.Split(string(data), "\n") {
 		title := strings.TrimSpace(line)
 		if title == "" {
@@ -593,89 +632,121 @@ func (r *Research) ReadContent() (string, error) {
 		}
 		title = strings.TrimSpace(strings.TrimPrefix(title, donePrefix))
 
-		content, err := os.ReadFile(filepath.Join(folder, utils.ToCamelCase(title)+".md"))
+		content, err := os.ReadFile(chapterFilePath(folder, title, idx))
 		if err != nil {
 			// skip chapters that have not been described yet
+			idx++
 			continue
 		}
 
 		b.WriteString("## " + title + "\n\n")
 		b.Write(content)
 		b.WriteString("\n\n")
+		idx++
 	}
 
 	return b.String(), nil
 }
 
-/**************************************************************************************
-* WriteRawContent writes the user-edited markdown content to a single content.md file in
-* the course folder. Subsequent reads will use this file instead of assembling chapters.
-**************************************************************************************/
-func (r *Research) WriteRawContent(content string) error {
-	folder := r.folderPath()
-	if err := os.MkdirAll(folder, 0755); err != nil {
-		return fmt.Errorf("failed to create topic folder: %w", err)
-	}
-	contentPath := filepath.Join(folder, contentFileName)
-	if err := os.WriteFile(contentPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write content file: %w", err)
-	}
-	return nil
-}
-
-/**************************************************************************************
-* ReadRawContent returns the editable markdown for a topic. If a user-edited content.md
-* file exists it is returned directly; otherwise the assembled chapter content is returned.
-**************************************************************************************/
-func (r *Research) ReadRawContent() (string, error) {
-	folder := r.folderPath()
-	contentPath := filepath.Join(folder, contentFileName)
-	if data, err := os.ReadFile(contentPath); err == nil {
-		return string(data), nil
-	}
-	return r.ReadContent()
-}
-
-// Highlight represents a user-created text highlight stored in a course folder.
+// Highlight represents a user-created text highlight stored in the database.
 type Highlight struct {
-	Text  string `json:"text"`
-	Color string `json:"color"`
+	ID        int       `json:"id"`
+	UserID    uint      `json:"userId"`
+	CourseID  int       `json:"courseId"`
+	Chapter   string    `json:"chapter"`
+	Text      string    `json:"text"`
+	Color     string    `json:"color"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// ReadHighlights reads the persisted highlights for a course.
-func ReadHighlights(userId uint, title string) ([]Highlight, error) {
-	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(title))
-	data, err := os.ReadFile(filepath.Join(folder, highlightsFileName))
+// getCourseID returns the database id of a user's course by title.
+func getCourseID(userId uint, title string) (int, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return 0, fmt.Errorf("database is not available")
+	}
+	var id int
+	err := ModelsRepo.DB.Conn.QueryRow(
+		"SELECT id FROM courses WHERE user_id = ? AND title = ?",
+		userId, title,
+	).Scan(&id)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return []Highlight{}, nil
-		}
+		return 0, fmt.Errorf("course not found: %w", err)
+	}
+	return id, nil
+}
+
+// ReadHighlights reads the persisted highlights for a user's course.
+func ReadHighlights(userId uint, title string) ([]Highlight, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return nil, fmt.Errorf("database is not available")
+	}
+
+	courseId, err := getCourseID(userId, title)
+	if err != nil {
+		return []Highlight{}, nil
+	}
+
+	rows, err := ModelsRepo.DB.Conn.Query(
+		"SELECT id, user_id, course_id, chapter, text, color, created_at, updated_at FROM course_highlights WHERE user_id = ? AND course_id = ? ORDER BY created_at",
+		userId, courseId,
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read highlights: %w", err)
 	}
+	defer rows.Close()
 
-	var highlights []Highlight
-	if err := json.Unmarshal(data, &highlights); err != nil {
-		return nil, fmt.Errorf("failed to parse highlights: %w", err)
+	highlights := []Highlight{}
+	for rows.Next() {
+		var h Highlight
+		if err := rows.Scan(
+			&h.ID, &h.UserID, &h.CourseID, &h.Chapter, &h.Text, &h.Color, &h.CreatedAt, &h.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan highlight: %w", err)
+		}
+		highlights = append(highlights, h)
 	}
 	return highlights, nil
 }
 
-// WriteHighlights persists the highlights for a course.
+// WriteHighlights replaces all highlights for a user's course with the given list.
 func WriteHighlights(userId uint, title string, highlights []Highlight) error {
-	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(title))
-	if err := os.MkdirAll(folder, 0755); err != nil {
-		return fmt.Errorf("failed to create topic folder: %w", err)
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
 	}
 
-	data, err := json.MarshalIndent(highlights, "", "  ")
+	courseId, err := getCourseID(userId, title)
 	if err != nil {
-		return fmt.Errorf("failed to encode highlights: %w", err)
+		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(folder, highlightsFileName), data, 0644); err != nil {
-		return fmt.Errorf("failed to write highlights: %w", err)
+	tx, err := ModelsRepo.DB.Conn.Begin()
+	if err != nil {
+		return err
 	}
-	return nil
+
+	if _, err := tx.Exec(
+		"DELETE FROM course_highlights WHERE user_id = ? AND course_id = ?",
+		userId, courseId,
+	); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to clear old highlights: %w", err)
+	}
+
+	for _, h := range highlights {
+		if strings.TrimSpace(h.Text) == "" || strings.TrimSpace(h.Color) == "" {
+			continue
+		}
+		if _, err := tx.Exec(
+			"INSERT INTO course_highlights (user_id, course_id, chapter, text, color) VALUES (?, ?, ?, ?, ?)",
+			userId, courseId, h.Chapter, h.Text, h.Color,
+		); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to insert highlight: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // markdownLinkPattern matches markdown links [text](url).
@@ -705,7 +776,7 @@ func sanitizeImagePrompt(text string, maxLen int) string {
 **************************************************************************************/
 func (r *Research) GenerateChapterImage(chapter string) error {
 	folder := r.folderPath()
-	chapterFile := filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
+	chapterFile := chapterFileByTitle(folder, chapter)
 
 	content, err := os.ReadFile(chapterFile)
 	if err != nil {

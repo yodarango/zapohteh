@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -22,8 +22,6 @@ import {
   API_PUT_COURSE,
   API_GET_COURSE_IMAGES,
   API_PUT_COURSE_COVER,
-  API_GET_COURSE_MD,
-  API_PUT_COURSE_MD,
   API_GET_COURSE_HIGHLIGHTS,
   API_PUT_COURSE_HIGHLIGHTS,
   API_BASE,
@@ -77,12 +75,8 @@ export const LearnView = () => {
   const [editSubjectIds, setEditSubjectIds] = useState(new Set());
   const [courseImages, setCourseImages] = useState([]);
   const [selectedCoverImage, setSelectedCoverImage] = useState("");
-  const [isEditingContent, setIsEditingContent] = useState(false);
-  const [editContent, setEditContent] = useState("");
-  const [isSavingContent, setIsSavingContent] = useState(false);
   const [highlights, setHighlights] = useState([]);
   const [activeHighlightColor, setActiveHighlightColor] = useState("");
-  const contentRef = useRef(null);
 
   const HIGHLIGHT_COLORS = [
     "#ffeb3b",
@@ -93,6 +87,60 @@ export const LearnView = () => {
     "#f368e0",
     "#a29bfe",
   ];
+
+  const renderMarkdownWithHighlights = (markdown, chapter = "") => {
+    if (!markdown) return "";
+    const html = marked.parse(markdown);
+    if (!highlights.length) return html;
+
+    const relevant = chapter
+      ? highlights.filter((h) => h.chapter === chapter)
+      : highlights.filter((h) => !h.chapter);
+    if (!relevant.length) return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const body = doc.body;
+
+    relevant.forEach(({ text, color }) => {
+      if (!text) return;
+      const walker = document.createTreeWalker(
+        body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false,
+      );
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement?.closest("mark.highlight")) continue;
+        if (node.textContent.includes(text)) {
+          textNodes.push(node);
+        }
+      }
+
+      textNodes.forEach((textNode) => {
+        const parts = textNode.textContent.split(text);
+        if (parts.length <= 1) return;
+
+        const fragment = document.createDocumentFragment();
+        parts.forEach((part, index) => {
+          fragment.appendChild(document.createTextNode(part));
+          if (index < parts.length - 1) {
+            const mark = document.createElement("mark");
+            mark.className = "highlight";
+            mark.style.backgroundColor = color;
+            mark.style.borderRadius = "2px";
+            mark.textContent = text;
+            fragment.appendChild(mark);
+          }
+        });
+        textNode.parentNode.replaceChild(fragment, textNode);
+      });
+    });
+
+    return body.innerHTML;
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -176,59 +224,6 @@ export const LearnView = () => {
     })();
     return () => controller.abort();
   }, [topic]);
-
-  useEffect(() => {
-    if (!contentRef.current || isEditingContent || highlights.length === 0) {
-      return;
-    }
-
-    const container = contentRef.current;
-
-    // Remove existing highlights so we can re-apply cleanly.
-    container.querySelectorAll("mark.highlight").forEach((mark) => {
-      const parent = mark.parentNode;
-      parent.replaceChild(document.createTextNode(mark.textContent), mark);
-      parent.normalize();
-    });
-
-    // Apply each highlight to text nodes in the rendered content.
-    highlights.forEach(({ text, color }) => {
-      if (!text) return;
-      const walker = document.createTreeWalker(
-        container,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false,
-      );
-      const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node.parentElement?.closest("mark.highlight")) continue;
-        if (node.textContent.includes(text)) {
-          textNodes.push(node);
-        }
-      }
-
-      textNodes.forEach((textNode) => {
-        const parts = textNode.textContent.split(text);
-        if (parts.length <= 1) return;
-
-        const fragment = document.createDocumentFragment();
-        parts.forEach((part, index) => {
-          fragment.appendChild(document.createTextNode(part));
-          if (index < parts.length - 1) {
-            const mark = document.createElement("mark");
-            mark.className = "highlight";
-            mark.style.backgroundColor = color;
-            mark.style.borderRadius = "2px";
-            mark.textContent = text;
-            fragment.appendChild(mark);
-          }
-        });
-        textNode.parentNode.replaceChild(fragment, textNode);
-      });
-    });
-  }, [highlights, content, isEditingContent]);
 
   const createImage = async (chapter) => {
     setGenerating((prev) => new Set(prev).add(chapter));
@@ -549,59 +544,6 @@ export const LearnView = () => {
     }
   };
 
-  const startEditContent = async () => {
-    try {
-      const res = await fetch(
-        `${API_GET_COURSE_MD}?topic=${encodeURIComponent(topic)}`,
-        { headers: authHeaders() },
-      );
-      const result = await res.json();
-      if (!res.ok || result.error) {
-        throw new Error(result.error || "Failed to load markdown");
-      }
-      setEditContent(result.data?.content || "");
-      setIsEditingContent(true);
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to load markdown",
-      });
-    }
-  };
-
-  const saveContent = async () => {
-    setIsSavingContent(true);
-    try {
-      const res = await fetch(API_PUT_COURSE_MD, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          topic,
-          content: editContent,
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok || result.error) {
-        throw new Error(result.error || "Failed to save markdown");
-      }
-      setContent(marked(editContent));
-      setIsEditingContent(false);
-      showToast({ type: "success", message: "Markdown saved" });
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to save markdown",
-      });
-    } finally {
-      setIsSavingContent(false);
-    }
-  };
-
-  const cancelEditContent = () => {
-    setIsEditingContent(false);
-    setEditContent("");
-  };
-
   const saveHighlights = async (newHighlights) => {
     try {
       const res = await fetch(API_PUT_COURSE_HIGHLIGHTS, {
@@ -626,14 +568,33 @@ export const LearnView = () => {
     }
   };
 
+  const getChapterFromSelection = (selection) => {
+    if (!selection.rangeCount) return "";
+    const range = selection.getRangeAt(0);
+    let node = range.commonAncestorContainer;
+    if (node.nodeType === Node.TEXT_NODE) {
+      node = node.parentElement;
+    }
+    const section = node.closest("section[id]");
+    if (!section) return "";
+    const chapter = chapters.find(
+      (c) => chapterSlug(c.title) === section.id,
+    );
+    return chapter?.title || "";
+  };
+
   const handleTextSelection = () => {
-    if (!activeHighlightColor || isEditingContent) return;
+    if (!activeHighlightColor) return;
 
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (!text) return;
 
-    const newHighlights = [...highlights, { text, color: activeHighlightColor }];
+    const chapter = getChapterFromSelection(selection);
+    const newHighlights = [
+      ...highlights,
+      { text, color: activeHighlightColor, chapter },
+    ];
     saveHighlights(newHighlights);
     selection.removeAllRanges();
   };
@@ -641,7 +602,6 @@ export const LearnView = () => {
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div
-        ref={contentRef}
         onMouseUp={handleTextSelection}
         className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
@@ -710,58 +670,36 @@ export const LearnView = () => {
           </div>
         )}
 
-        {isEditingContent ? (
-          <div className='flex flex-col gap-4'>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className='min-h-[500px] w-full rounded-2xl border border-dr-border bg-dr-surface p-4 font-mono text-sm text-dr-text'
-            />
-            <div className='flex justify-end gap-2'>
-              <Button
-                secondary
-                onClick={cancelEditContent}
-                disabled={isSavingContent}
-              >
-                Cancel
-              </Button>
-              <Button
-                primary
-                onClick={saveContent}
-                isLoading={isSavingContent}
-                disabled={isSavingContent}
-              >
-                Save
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {intro && (
+        {intro && (
+          <div
+            className='research-content'
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdownWithHighlights(intro),
+            }}
+          />
+        )}
+
+        {chapters.map((chapter) => {
+          const isGenerating = generating.has(chapter.title);
+          return (
+            <section
+              key={chapter.title}
+              id={chapterSlug(chapter.title)}
+              className='mt-8 scroll-mt-6'
+            >
+              <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
+                {chapter.title}
+              </h4>
+
               <div
                 className='research-content'
-                dangerouslySetInnerHTML={{ __html: marked.parse(intro) }}
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdownWithHighlights(
+                    chapter.body,
+                    chapter.title,
+                  ),
+                }}
               />
-            )}
-
-            {chapters.map((chapter) => {
-              const isGenerating = generating.has(chapter.title);
-              return (
-                <section
-                  key={chapter.title}
-                  id={chapterSlug(chapter.title)}
-                  className='mt-8 scroll-mt-6'
-                >
-                  <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
-                    {chapter.title}
-                  </h4>
-
-                  <div
-                    className='research-content'
-                    dangerouslySetInnerHTML={{
-                      __html: marked.parse(chapter.body),
-                    }}
-                  />
                   {/* chapter heading with its summary image action */}
                   <div className='mb-3 flex items-start justify-between gap-4'>
                     <div className='flex shrink-0 items-center gap-2'>
@@ -803,8 +741,6 @@ export const LearnView = () => {
                 </section>
               );
             })}
-          </>
-        )}
       </div>
 
       <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full max-w-[400px]'>
@@ -891,10 +827,6 @@ export const LearnView = () => {
             <Button secondary className='w-full' onClick={narrate}>
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
-            </Button>
-            <Button secondary className='w-full' onClick={startEditContent}>
-              <ion-icon name='create-outline'></ion-icon>
-              <span className='ml-2'>Edit content</span>
             </Button>
             <Button
               danger
