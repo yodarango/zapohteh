@@ -127,29 +127,33 @@ export const LearnView = () => {
           fragment.appendChild(document.createTextNode(part));
           if (index < parts.length - 1) {
             const mark = document.createElement("mark");
-            mark.className = "highlight relative group";
+            mark.className =
+              "highlight rounded-md px-1 py-0.5 box-decoration-clone";
             mark.style.backgroundColor = color;
-            mark.style.borderRadius = "2px";
-            mark.textContent = text;
+            mark.appendChild(document.createTextNode(text));
             if (note) {
               mark.setAttribute("title", note);
             }
 
+            const actions = document.createElement("span");
+            actions.className =
+              "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
+
             const deleteBtn = document.createElement("button");
             deleteBtn.className =
-              "highlight-delete absolute -top-2 -right-2 hidden h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none group-hover:flex";
+              "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
             deleteBtn.setAttribute("data-highlight-text", text);
             deleteBtn.setAttribute("data-highlight-id", String(highlightId));
             deleteBtn.setAttribute("data-highlight-chapter", chapterName || "");
             deleteBtn.setAttribute("aria-label", "Remove highlight");
             deleteBtn.setAttribute("title", "Remove highlight");
             deleteBtn.textContent = "×";
-            mark.appendChild(deleteBtn);
+            actions.appendChild(deleteBtn);
 
             if (note) {
               const noteBtn = document.createElement("button");
               noteBtn.className =
-                "highlight-note absolute -top-2 -left-2 hidden h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none group-hover:flex";
+                "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
               noteBtn.setAttribute("data-highlight-note", note);
               noteBtn.setAttribute("data-highlight-text", text);
               noteBtn.setAttribute("data-highlight-chapter", chapterName || "");
@@ -157,9 +161,10 @@ export const LearnView = () => {
               noteBtn.setAttribute("aria-label", "View note");
               noteBtn.setAttribute("title", "View note");
               noteBtn.innerHTML = "<ion-icon name='document-outline'></ion-icon>";
-              mark.appendChild(noteBtn);
+              actions.appendChild(noteBtn);
             }
 
+            mark.appendChild(actions);
             fragment.appendChild(mark);
           }
         });
