@@ -1,60 +1,90 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loading, Modal } from "@ds";
+import { Loading } from "@ds";
 import { API_GET_ALL_COURSE_HIGHLIGHTS } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
 const PAGE_SIZE = 20;
 
-const HighlightCard = ({ highlight, onViewNote }) => (
-  <div className='rounded-2xl border border-dr-border bg-dr-surface p-4'>
-    <div className='mb-3 flex items-start gap-3'>
-      {highlight.coverImagePath ? (
-        <img
-          src={highlight.coverImagePath}
-          alt={highlight.courseTitle}
-          className='h-16 w-16 shrink-0 rounded-xl object-cover'
+const HighlightCard = ({ highlight }) => {
+  const highlightColor = highlight.color || "#ffffff";
+
+  return (
+    <article className='w-full overflow-hidden rounded-2xl border border-dr-border bg-black min-[700px]:min-w-[330px] min-[700px]:max-w-[500px] min-[700px]:flex-1'>
+      <header className='flex items-center gap-3 px-4 py-3'>
+        <div
+          className='h-10 w-10 shrink-0 rounded-full border-2 border-white/10'
+          style={{ backgroundColor: highlightColor }}
+          aria-hidden='true'
         />
-      ) : (
-        <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-dr-accent/20'>
-          <ion-icon
-            name='image-outline'
-            className='text-2xl text-dr-accent/60'
-          />
-        </div>
-      )}
-      <div className='min-w-0 flex-1'>
-        <div className='mb-1 flex items-center gap-2'>
-          <span
-            className='inline-block h-3 w-3 shrink-0 rounded-full'
-            style={{ backgroundColor: highlight.color }}
-          />
-          <h3 className='truncate text-sm font-semibold text-dr-text'>
+
+        <div className='min-w-0 flex-1'>
+          <h3 className='truncate text-sm font-semibold text-white'>
             {highlight.courseTitle}
           </h3>
-        </div>
-        <p className='text-xs font-medium text-dr-text-muted'>
-          {highlight.chapter || "No chapter"}
-        </p>
-      </div>
-      {highlight.note && (
-        <button
-          type='button'
-          onClick={() => onViewNote(highlight)}
-          className='flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-dr-accent transition-colors hover:bg-dr-accent-light'
-          aria-label='View note'
-          title='View note'
-        >
-          <ion-icon name='document-outline'></ion-icon>
-        </button>
-      )}
-    </div>
 
-    <blockquote className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3 text-sm italic text-dr-text'>
-      "{highlight.text}"
-    </blockquote>
-  </div>
-);
+          {highlight.lessonTitle && (
+            <p className='truncate text-xs text-white/60'>
+              {highlight.lessonTitle}
+            </p>
+          )}
+        </div>
+
+        <ion-icon name='ellipsis-horizontal' className='text-xl text-white' />
+      </header>
+
+      <div className='relative aspect-square overflow-hidden bg-black'>
+        {highlight.coverImagePath ? (
+          <img
+            src={highlight.coverImagePath}
+            alt={highlight.courseTitle}
+            className='absolute inset-0 h-full w-full object-cover opacity-30'
+          />
+        ) : (
+          <div className='absolute inset-0 flex items-center justify-center bg-black'>
+            <ion-icon name='image-outline' className='text-5xl text-white/20' />
+          </div>
+        )}
+
+        <div className='absolute inset-0 bg-black/20' />
+
+        <div className='relative z-10 flex h-full items-center justify-center p-8'>
+          <blockquote className='max-w-md text-center text-xl font-bold leading-relaxed text-white sm:text-2xl'>
+            “{highlight.text}”
+          </blockquote>
+        </div>
+      </div>
+
+      <div className='px-4 py-4'>
+        {/* <div className='mb-3 flex items-center justify-between'>
+          <div className='flex items-center gap-4'>
+            <ion-icon name='heart-outline' className='text-2xl text-white' />
+
+            <ion-icon
+              name='chatbubble-outline'
+              className='text-2xl text-white'
+            />
+
+            <ion-icon
+              name='paper-plane-outline'
+              className='text-2xl text-white'
+            />
+          </div>
+
+          <ion-icon name='bookmark-outline' className='text-2xl text-white' />
+        </div> */}
+
+        {highlight.note && (
+          <p className='text-sm leading-relaxed text-white'>
+            {/* <span className='mr-2 font-semibold'>{highlight.courseTitle}</span> */}
+
+            {highlight.note}
+          </p>
+        )}
+      </div>
+    </article>
+  );
+};
 
 export const HighlightsView = () => {
   const { showToast } = useAppContext();
@@ -64,30 +94,44 @@ export const HighlightsView = () => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedHighlight, setSelectedHighlight] = useState(null);
   const sentinelRef = useRef(null);
 
   const fetchHighlights = useCallback(
     async (currentOffset, append = false) => {
       if (loading) return;
+
       setLoading(true);
       setError(null);
+
       try {
         const res = await fetch(
           `${API_GET_ALL_COURSE_HIGHLIGHTS}?limit=${PAGE_SIZE}&offset=${currentOffset}`,
-          { headers: authHeaders() },
+          {
+            headers: authHeaders(),
+          },
         );
+
         const result = await res.json();
+
         if (!res.ok || result.error) {
           throw new Error(result.error || "Failed to load highlights");
         }
+
         const page = result.data?.highlights || [];
         const total = result.data?.total || 0;
-        setHighlights((prev) => (append ? [...prev, ...page] : page));
+
+        setHighlights((prev) => {
+          return append ? [...prev, ...page] : page;
+        });
+
         setHasMore(currentOffset + page.length < total);
       } catch (err) {
         setError(err.message || "Something went wrong");
-        showToast({ type: "danger", message: err.message || "Failed to load highlights" });
+
+        showToast({
+          type: "danger",
+          message: err.message || "Failed to load highlights",
+        });
       } finally {
         setLoading(false);
         setInitialLoading(false);
@@ -98,6 +142,7 @@ export const HighlightsView = () => {
 
   useEffect(() => {
     fetchHighlights(0, false);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -107,22 +152,30 @@ export const HighlightsView = () => {
     const observer = new IntersectionObserver(
       (entries) => {
         const first = entries[0];
+
         if (first.isIntersecting) {
           const nextOffset = offset + PAGE_SIZE;
+
           setOffset(nextOffset);
           fetchHighlights(nextOffset, true);
         }
       },
-      { rootMargin: "200px" },
+      {
+        rootMargin: "200px",
+      },
     );
 
     observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
+
+    return () => {
+      observer.disconnect();
+    };
   }, [hasMore, loading, offset, fetchHighlights]);
 
   return (
     <section>
       <h1 className='mb-1 text-2xl font-bold text-dr-text'>Highlights</h1>
+
       <p className='mb-6 text-sm text-dr-text-muted'>
         All your highlighted passages across every course.
       </p>
@@ -140,13 +193,9 @@ export const HighlightsView = () => {
       )}
 
       {!initialLoading && highlights.length > 0 && (
-        <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+        <div className='grid grid-cols-1 gap-6 min-[700px]:grid-cols-2 xl:grid-cols-3'>
           {highlights.map((highlight) => (
-            <HighlightCard
-              key={highlight.id}
-              highlight={highlight}
-              onViewNote={setSelectedHighlight}
-            />
+            <HighlightCard key={highlight.id} highlight={highlight} />
           ))}
         </div>
       )}
@@ -162,27 +211,6 @@ export const HighlightsView = () => {
           No more highlights
         </p>
       )}
-
-      <Modal
-        open={selectedHighlight != null}
-        onClose={() => setSelectedHighlight(null)}
-        title={selectedHighlight ? `Note - ${selectedHighlight.courseTitle}` : "Note"}
-        zIndex={30}
-      >
-        {selectedHighlight && (
-          <div className='flex flex-col gap-3'>
-            <p className='text-xs font-medium text-dr-text-muted'>
-              {selectedHighlight.chapter || "No chapter"}
-            </p>
-            <div className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3'>
-              <p className='text-sm italic text-dr-text'>"{selectedHighlight.text}"</p>
-            </div>
-            <div className='rounded-xl bg-dr-surface-light p-3'>
-              <p className='text-sm text-dr-text'>{selectedHighlight.note}</p>
-            </div>
-          </div>
-        )}
-      </Modal>
     </section>
   );
 };
