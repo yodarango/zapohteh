@@ -29,6 +29,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_IMAGES, models.Authenticate(GetCourseImages))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_COVER, models.Authenticate(PutCourseCover))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_HIGHLIGHTS, models.Authenticate(GetCourseHighlights))
+	mux.HandleFunc(constants.ROUTE_GET_ALL_COURSE_HIGHLIGHTS, models.Authenticate(GetAllCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_HIGHLIGHTS, models.Authenticate(PutCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_HIGHLIGHTS, models.Authenticate(HighlightsHandler))
 	mux.HandleFunc(constants.ROUTE_PUT_HIGHLIGHTS, models.Authenticate(PutHighlight))
@@ -571,6 +572,56 @@ func GetCourseHighlights(w http.ResponseWriter, r *http.Request) {
 	httpResponse.Data = map[string]interface{}{
 		"topic":      topic,
 		"highlights": highlights,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Returns paginated course highlights across all of a user's courses,
+* enriched with the course title, cover image path and highlight color.
+*********************************************************************/
+func GetAllCourseHighlights(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	q := r.URL.Query()
+	limit := 20
+	if raw := q.Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	offset := 0
+	if raw := q.Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+
+	highlights, total, err := models.ListAllCourseHighlights(authUser.Id, limit, offset)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"highlights": highlights,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil

@@ -83,6 +83,7 @@ export const LearnView = () => {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [pendingHighlight, setPendingHighlight] = useState(null);
   const [highlightNote, setHighlightNote] = useState("");
+  const [viewingNote, setViewingNote] = useState(null);
 
   const renderMarkdownWithHighlights = (markdown, chapter = "") => {
     if (!markdown) return "";
@@ -144,6 +145,20 @@ export const LearnView = () => {
             deleteBtn.setAttribute("title", "Remove highlight");
             deleteBtn.textContent = "×";
             mark.appendChild(deleteBtn);
+
+            if (note) {
+              const noteBtn = document.createElement("button");
+              noteBtn.className =
+                "highlight-note absolute -top-2 -left-2 hidden h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none group-hover:flex";
+              noteBtn.setAttribute("data-highlight-note", note);
+              noteBtn.setAttribute("data-highlight-text", text);
+              noteBtn.setAttribute("data-highlight-chapter", chapterName || "");
+              noteBtn.setAttribute("data-highlight-label", userHighlight?.label || "");
+              noteBtn.setAttribute("aria-label", "View note");
+              noteBtn.setAttribute("title", "View note");
+              noteBtn.innerHTML = "<ion-icon name='document-outline'></ion-icon>";
+              mark.appendChild(noteBtn);
+            }
 
             fragment.appendChild(mark);
           }
@@ -621,6 +636,7 @@ export const LearnView = () => {
     const target =
       e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
     if (target.closest(".highlight-delete")) return;
+    if (target.closest(".highlight-note")) return;
 
     const selection = window.getSelection();
     const text = selection.toString().trim();
@@ -652,13 +668,24 @@ export const LearnView = () => {
     const target =
       e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
     const deleteBtn = target.closest(".highlight-delete");
-    if (!deleteBtn) return;
+    const noteBtn = target.closest(".highlight-note");
 
-    const text = deleteBtn.getAttribute("data-highlight-text");
-    const highlightId = deleteBtn.getAttribute("data-highlight-id");
-    const chapter = deleteBtn.getAttribute("data-highlight-chapter") || "";
-    if (text && highlightId) {
-      deleteHighlight(text, highlightId, chapter);
+    if (deleteBtn) {
+      const text = deleteBtn.getAttribute("data-highlight-text");
+      const highlightId = deleteBtn.getAttribute("data-highlight-id");
+      const chapter = deleteBtn.getAttribute("data-highlight-chapter") || "";
+      if (text && highlightId) {
+        deleteHighlight(text, highlightId, chapter);
+      }
+      return;
+    }
+
+    if (noteBtn) {
+      const note = noteBtn.getAttribute("data-highlight-note") || "";
+      const text = noteBtn.getAttribute("data-highlight-text") || "";
+      const chapter = noteBtn.getAttribute("data-highlight-chapter") || "";
+      const label = noteBtn.getAttribute("data-highlight-label") || "";
+      setViewingNote({ note, text, chapter, label });
     }
   };
 
@@ -984,6 +1011,38 @@ export const LearnView = () => {
               </Button>
               <Button primary onClick={() => savePendingHighlight(true)}>
                 Save note
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          open={viewingNote != null}
+          onClose={() => setViewingNote(null)}
+          title={viewingNote?.label ? `Note: ${viewingNote.label}` : "Note"}
+          zIndex={30}
+        >
+          <div className='flex flex-col gap-4'>
+            {viewingNote?.chapter && (
+              <p className='text-xs font-medium text-dr-text-muted'>
+                {viewingNote.chapter}
+              </p>
+            )}
+            {viewingNote?.text && (
+              <div className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3'>
+                <p className='text-sm italic text-dr-text'>
+                  "{viewingNote.text}"
+                </p>
+              </div>
+            )}
+            <div className='rounded-xl bg-dr-surface-light p-3'>
+              <p className='text-sm text-dr-text'>
+                {viewingNote?.note || "No note"}
+              </p>
+            </div>
+            <div className='flex justify-end'>
+              <Button secondary onClick={() => setViewingNote(null)}>
+                Close
               </Button>
             </div>
           </div>

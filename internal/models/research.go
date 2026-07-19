@@ -689,6 +689,85 @@ func getCourseID(userId uint, title string) (int, error) {
 	return id, nil
 }
 
+// AllCourseHighlight represents a single course highlight enriched with the course
+// title, cover image and the highlight color for rendering in the highlights feed.
+type AllCourseHighlight struct {
+	ID             int       `json:"id"`
+	CourseID       int       `json:"courseId"`
+	CourseTitle    string    `json:"courseTitle"`
+	CoverImagePath string    `json:"coverImagePath"`
+	HighlightID    int       `json:"highlightId"`
+	Color          string    `json:"color"`
+	Chapter        string    `json:"chapter"`
+	Text           string    `json:"text"`
+	Note           string    `json:"note"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// ListAllCourseHighlights returns all of a user's course highlights across every
+// course, enriched with the course title, cover image path and highlight color.
+// Results are ordered by the highlight's updated_at timestamp descending and
+// paginated with limit/offset. The second return value is the total count.
+func ListAllCourseHighlights(userId uint, limit, offset int) ([]AllCourseHighlight, int, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return nil, 0, fmt.Errorf("database is not available")
+	}
+
+	var total int
+	err := ModelsRepo.DB.Conn.QueryRow(
+		"SELECT COUNT(*) FROM course_highlights WHERE user_id = ?",
+		userId,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count highlights: %w", err)
+	}
+
+	rows, err := ModelsRepo.DB.Conn.Query(`
+		SELECT
+			ch.id,
+			ch.course_id,
+			c.title,
+			c.cover_image_path,
+			ch.highlight_id,
+			h.color,
+			ch.chapter,
+			ch.text,
+			ch.note,
+			ch.created_at,
+			ch.updated_at
+		FROM course_highlights ch
+		JOIN courses c ON c.id = ch.course_id
+		JOIN highlights h ON h.id = ch.highlight_id
+		WHERE ch.user_id = ?
+		ORDER BY ch.updated_at DESC
+		LIMIT ? OFFSET ?`,
+		userId, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read highlights: %w", err)
+	}
+	defer rows.Close()
+
+	highlights := []AllCourseHighlight{}
+	for rows.Next() {
+		var h AllCourseHighlight
+		var coverImagePath sql.NullString
+		if err := rows.Scan(
+			&h.ID, &h.CourseID, &h.CourseTitle, &coverImagePath,
+			&h.HighlightID, &h.Color, &h.Chapter, &h.Text, &h.Note,
+			&h.CreatedAt, &h.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan highlight: %w", err)
+		}
+		if coverImagePath.Valid {
+			h.CoverImagePath = coverImagePath.String
+		}
+		highlights = append(highlights, h)
+	}
+	return highlights, total, nil
+}
+
 // ReadHighlights reads the persisted highlights for a user's course.
 func ReadHighlights(userId uint, title string) ([]Highlight, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
