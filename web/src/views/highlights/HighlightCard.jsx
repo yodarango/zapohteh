@@ -54,6 +54,12 @@ export const HighlightCard = ({ highlight, onDelete }) => {
                 {highlight.lessonTitle}
               </p>
             )}
+
+            {highlight.chapter && (
+              <p className='truncate text-xs text-black/60'>
+                {highlight.chapter}
+              </p>
+            )}
           </div>
 
           <button
