@@ -17,6 +17,30 @@ export const AppContextProvider = (props) => {
     );
   }
 
+  function toggleLearnMenu() {
+    setState((prevState) =>
+      update(prevState, {
+        isLearnMenuOpen: { $set: !prevState.isLearnMenuOpen },
+      }),
+    );
+  }
+
+  function openLearnMenu() {
+    setState((prevState) =>
+      update(prevState, {
+        isLearnMenuOpen: { $set: true },
+      }),
+    );
+  }
+
+  function closeLearnMenu() {
+    setState((prevState) =>
+      update(prevState, {
+        isLearnMenuOpen: { $set: false },
+      }),
+    );
+  }
+
   // Get auth token from localStorage and decode user data
   function setupAuth() {
     const token = localStorage.getItem("auth");
@@ -115,6 +139,9 @@ export const AppContextProvider = (props) => {
       value={{
         getUserFromToken,
         toggleMenu,
+        toggleLearnMenu,
+        openLearnMenu,
+        closeLearnMenu,
         setupAuth,
         showToast,
         logout,

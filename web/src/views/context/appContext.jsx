@@ -4,6 +4,7 @@ export const initialAppData = {
   state: {
     isAuthenticated: false,
     isModalOpen: false,
+    isLearnMenuOpen: false,
     isPending: false,
     isLoading: true,
     isActive: false,
@@ -17,6 +18,9 @@ export const defaultAppContext = {
   state: initialAppData.state,
   getUserFromToken: () => {},
   toggleMenu: () => {},
+  openLearnMenu: () => {},
+  closeLearnMenu: () => {},
+  toggleLearnMenu: () => {},
   setupAuth: () => {},
   showToast: () => {},
   logout: () => {},

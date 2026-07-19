@@ -52,7 +52,7 @@ const chapterSlug = (title) =>
 export const LearnView = () => {
   const { topic } = useParams();
   const navigate = useNavigate();
-  const { showToast } = useAppContext();
+  const { showToast, state, closeLearnMenu } = useAppContext();
 
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
@@ -343,6 +343,7 @@ export const LearnView = () => {
     if (element) {
       element.scrollIntoView({ behavior: "auto", block: "start" });
     }
+    closeLearnMenu();
   };
 
   const progress = chapters.length
@@ -743,46 +744,22 @@ export const LearnView = () => {
             })}
       </div>
 
-      <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full max-w-[400px]'>
-        {chapters.length > 0 && (
-          <div className='py-4'>
-            <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-              Chapters
-            </h3>
-            <ul className='flex flex-col gap-1'>
-              {chapters.map((chapter) => {
-                const isRead = readChapters.has(chapter.title);
-                return (
-                  <li key={chapter.title}>
-                    <button
-                      type='button'
-                      onClick={() => scrollToChapter(chapter.title)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
-                        isRead
-                          ? "text-dr-success"
-                          : "text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
-                      }`}
-                    >
-                      {isRead ? (
-                        <ion-icon
-                          name='checkmark-circle'
-                          className='shrink-0'
-                        />
-                      ) : (
-                        <ion-icon
-                          name='ellipse-outline'
-                          className='shrink-0 text-dr-text-muted'
-                        />
-                      )}
-                      <span>{chapter.title}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+      <div className={`${state.isLearnMenuOpen ? 'fixed inset-0 z-50 bg-dr-surface p-4' : 'hidden'} md:block md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}>
+        {state.isLearnMenuOpen && (
+          <div className='mb-4 flex items-center justify-between md:hidden'>
+            <h3 className='text-sm font-semibold uppercase tracking-wide text-dr-text-muted'>Menu</h3>
+            <button
+              type='button'
+              onClick={closeLearnMenu}
+              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+              aria-label='Close menu'
+            >
+              <ion-icon name='close-outline'></ion-icon>
+              <span>Close</span>
+            </button>
           </div>
         )}
-
+        <ChatPanel topic={topic} chapters={chapters} />
         <div className='mb-4'>
           <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Highlighter
@@ -794,9 +771,10 @@ export const LearnView = () => {
                 <button
                   key={color}
                   type='button'
-                  onClick={() =>
-                    setActiveHighlightColor(selected ? "" : color)
-                  }
+                  onClick={() => {
+                    setActiveHighlightColor(selected ? "" : color);
+                    if (!selected) closeLearnMenu();
+                  }}
                   className={`h-8 w-8 rounded-full border-2 transition-transform ${
                     selected
                       ? "border-dr-text scale-110"
@@ -839,7 +817,44 @@ export const LearnView = () => {
           </div>
         </div>
 
-        <ChatPanel topic={topic} chapters={chapters} />
+        {chapters.length > 0 && (
+          <div className='py-4'>
+            <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+              Chapters
+            </h3>
+            <ul className='flex flex-col gap-1'>
+              {chapters.map((chapter) => {
+                const isRead = readChapters.has(chapter.title);
+                return (
+                  <li key={chapter.title}>
+                    <button
+                      type='button'
+                      onClick={() => scrollToChapter(chapter.title)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                        isRead
+                          ? "text-dr-success"
+                          : "text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
+                      }`}
+                    >
+                      {isRead ? (
+                        <ion-icon
+                          name='checkmark-circle'
+                          className='shrink-0'
+                        />
+                      ) : (
+                        <ion-icon
+                          name='ellipse-outline'
+                          className='shrink-0 text-dr-text-muted'
+                        />
+                      )}
+                      <span>{chapter.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         <ConfirmationModal
           open={showDeleteModal}
