@@ -24,6 +24,7 @@ import {
   API_PUT_COURSE_COVER,
   API_GET_COURSE_HIGHLIGHTS,
   API_PUT_COURSE_HIGHLIGHTS,
+  API_GET_HIGHLIGHTS,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
@@ -76,17 +77,12 @@ export const LearnView = () => {
   const [courseImages, setCourseImages] = useState([]);
   const [selectedCoverImage, setSelectedCoverImage] = useState("");
   const [highlights, setHighlights] = useState([]);
-  const [activeHighlightColor, setActiveHighlightColor] = useState("");
-
-  const HIGHLIGHT_COLORS = [
-    "#ffeb3b",
-    "#ff9f43",
-    "#ff6b6b",
-    "#48dbfb",
-    "#1dd1a1",
-    "#f368e0",
-    "#a29bfe",
-  ];
+  const [userHighlights, setUserHighlights] = useState([]);
+  const [activeHighlightId, setActiveHighlightId] = useState(null);
+  const [isChaptersOpen, setIsChaptersOpen] = useState(true);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [pendingHighlight, setPendingHighlight] = useState(null);
+  const [highlightNote, setHighlightNote] = useState("");
 
   const renderMarkdownWithHighlights = (markdown, chapter = "") => {
     if (!markdown) return "";
@@ -102,8 +98,10 @@ export const LearnView = () => {
     const doc = parser.parseFromString(html, "text/html");
     const body = doc.body;
 
-    relevant.forEach(({ text, color }) => {
+    relevant.forEach(({ text, highlightId, chapter: chapterName, note }) => {
       if (!text) return;
+      const userHighlight = userHighlights.find((h) => h.id === highlightId);
+      const color = userHighlight?.color || "#ffeb3b";
       const walker = document.createTreeWalker(
         body,
         NodeFilter.SHOW_TEXT,
@@ -128,10 +126,25 @@ export const LearnView = () => {
           fragment.appendChild(document.createTextNode(part));
           if (index < parts.length - 1) {
             const mark = document.createElement("mark");
-            mark.className = "highlight";
+            mark.className = "highlight relative group";
             mark.style.backgroundColor = color;
             mark.style.borderRadius = "2px";
             mark.textContent = text;
+            if (note) {
+              mark.setAttribute("title", note);
+            }
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className =
+              "highlight-delete absolute -top-2 -right-2 hidden h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none group-hover:flex";
+            deleteBtn.setAttribute("data-highlight-text", text);
+            deleteBtn.setAttribute("data-highlight-id", String(highlightId));
+            deleteBtn.setAttribute("data-highlight-chapter", chapterName || "");
+            deleteBtn.setAttribute("aria-label", "Remove highlight");
+            deleteBtn.setAttribute("title", "Remove highlight");
+            deleteBtn.textContent = "×";
+            mark.appendChild(deleteBtn);
+
             fragment.appendChild(mark);
           }
         });
@@ -199,15 +212,25 @@ export const LearnView = () => {
           );
         }
 
-        // Load saved highlights.
+        // Load saved course highlights and user-defined highlights.
         try {
-          const highlightsRes = await fetch(
-            `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
-            { headers: authHeaders() },
-          );
+          const [highlightsRes, userHighlightsRes] = await Promise.all([
+            fetch(
+              `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
+              { headers: authHeaders() },
+            ),
+            fetch(API_GET_HIGHLIGHTS, { headers: authHeaders() }),
+          ]);
           const highlightsResult = await highlightsRes.json();
+          const userHighlightsResult = await userHighlightsRes.json();
           if (highlightsRes.ok && highlightsResult.data?.highlights) {
             setHighlights(highlightsResult.data.highlights);
+          }
+          if (
+            userHighlightsRes.ok &&
+            Array.isArray(userHighlightsResult.data)
+          ) {
+            setUserHighlights(userHighlightsResult.data);
           }
         } catch {
           // ignore highlights loading errors
@@ -545,7 +568,7 @@ export const LearnView = () => {
     }
   };
 
-  const saveHighlights = async (newHighlights) => {
+  const saveHighlights = async (newHighlights, message = "Highlight saved") => {
     try {
       const res = await fetch(API_PUT_COURSE_HIGHLIGHTS, {
         method: "PUT",
@@ -560,13 +583,21 @@ export const LearnView = () => {
         throw new Error(result.error || "Failed to save highlights");
       }
       setHighlights(newHighlights);
-      showToast({ type: "success", message: "Highlight saved" });
+      showToast({ type: "success", message });
     } catch (err) {
       showToast({
         type: "danger",
         message: err.message || "Failed to save highlights",
       });
     }
+  };
+
+  const deleteHighlight = (text, highlightId, chapter) => {
+    const id = Number(highlightId);
+    const newHighlights = highlights.filter(
+      (h) => !(h.text === text && h.highlightId === id && h.chapter === chapter),
+    );
+    saveHighlights(newHighlights, "Highlight removed");
   };
 
   const getChapterFromSelection = (selection) => {
@@ -584,26 +615,58 @@ export const LearnView = () => {
     return chapter?.title || "";
   };
 
-  const handleTextSelection = () => {
-    if (!activeHighlightColor) return;
+  const handleTextSelection = (e) => {
+    if (!activeHighlightId) return;
+
+    const target =
+      e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+    if (target.closest(".highlight-delete")) return;
 
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (!text) return;
 
     const chapter = getChapterFromSelection(selection);
-    const newHighlights = [
-      ...highlights,
-      { text, color: activeHighlightColor, chapter },
-    ];
-    saveHighlights(newHighlights);
+    setPendingHighlight({ text, highlightId: activeHighlightId, chapter });
+    setHighlightNote("");
+    setShowNoteModal(true);
     selection.removeAllRanges();
+  };
+
+  const savePendingHighlight = (withNote) => {
+    if (!pendingHighlight) return;
+    const newHighlight = {
+      ...pendingHighlight,
+      note: withNote ? highlightNote.trim() : "",
+    };
+    saveHighlights(
+      [...highlights, newHighlight],
+      withNote ? "Highlight and note saved" : "Highlight saved",
+    );
+    setShowNoteModal(false);
+    setPendingHighlight(null);
+    setHighlightNote("");
+  };
+
+  const handleContentClick = (e) => {
+    const target =
+      e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+    const deleteBtn = target.closest(".highlight-delete");
+    if (!deleteBtn) return;
+
+    const text = deleteBtn.getAttribute("data-highlight-text");
+    const highlightId = deleteBtn.getAttribute("data-highlight-id");
+    const chapter = deleteBtn.getAttribute("data-highlight-chapter") || "";
+    if (text && highlightId) {
+      deleteHighlight(text, highlightId, chapter);
+    }
   };
 
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div
         onMouseUp={handleTextSelection}
+        onClick={handleContentClick}
         className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
         <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
@@ -744,7 +807,7 @@ export const LearnView = () => {
             })}
       </div>
 
-      <div className={`${state.isLearnMenuOpen ? 'fixed inset-0 z-50 bg-dr-surface p-4' : 'hidden'} md:block md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}>
+      <div className={`${state.isLearnMenuOpen ? 'fixed inset-0 z-50 bg-dr-surface p-4 flex flex-col' : 'hidden'} md:flex md:flex-col md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}>
         {state.isLearnMenuOpen && (
           <div className='mb-4 flex items-center justify-between md:hidden'>
             <h3 className='text-sm font-semibold uppercase tracking-wide text-dr-text-muted'>Menu</h3>
@@ -759,41 +822,54 @@ export const LearnView = () => {
             </button>
           </div>
         )}
-        <ChatPanel topic={topic} chapters={chapters} />
-        <div className='mb-4'>
+        <div className='order-1 md:order-3'>
+          <ChatPanel topic={topic} chapters={chapters} />
+        </div>
+        <div className='order-2 md:order-2 mb-4'>
           <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Highlighter
           </h3>
-          <div className='flex flex-wrap items-center gap-2'>
-            {HIGHLIGHT_COLORS.map((color) => {
-              const selected = activeHighlightColor === color;
-              return (
-                <button
-                  key={color}
-                  type='button'
-                  onClick={() => {
-                    setActiveHighlightColor(selected ? "" : color);
-                    if (!selected) closeLearnMenu();
-                  }}
-                  className={`h-8 w-8 rounded-full border-2 transition-transform ${
-                    selected
-                      ? "border-dr-text scale-110"
-                      : "border-transparent hover:scale-105"
-                  }`}
-                  style={{ backgroundColor: color }}
-                  title={selected ? "Disable highlighter" : "Select color"}
-                />
-              );
-            })}
-          </div>
+          {userHighlights.length === 0 ? (
+            <p className='text-xs text-dr-text-muted'>
+              No highlights yet. Create them in the Highlights page.
+            </p>
+          ) : (
+            <div className='flex flex-wrap items-center gap-2'>
+              {userHighlights.map((highlight) => {
+                const selected = activeHighlightId === highlight.id;
+                return (
+                  <button
+                    key={highlight.id}
+                    type='button'
+                    onClick={() => {
+                      setActiveHighlightId(selected ? null : highlight.id);
+                      if (!selected) closeLearnMenu();
+                    }}
+                    className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                      selected
+                        ? "border-dr-text bg-dr-surface-light"
+                        : "border-dr-border bg-dr-surface hover:bg-dr-surface-light"
+                    }`}
+                    title={highlight.description || highlight.label}
+                  >
+                    <span
+                      className='inline-block h-4 w-4 rounded-full'
+                      style={{ backgroundColor: highlight.color }}
+                    />
+                    <span>{highlight.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <p className='mt-1 text-xs text-dr-text-muted'>
-            {activeHighlightColor
+            {activeHighlightId
               ? "Drag to highlight text"
-              : "Choose a color to start highlighting"}
+              : "Choose a highlight to start highlighting"}
           </p>
         </div>
 
-        <div className='mb-4'>
+        <div className='order-3 md:order-4 mb-4'>
           <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Actions
           </h3>
@@ -818,11 +894,21 @@ export const LearnView = () => {
         </div>
 
         {chapters.length > 0 && (
-          <div className='py-4'>
-            <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-              Chapters
-            </h3>
-            <ul className='flex flex-col gap-1'>
+          <div className='order-4 md:order-1 py-4'>
+            <div className='mb-3 flex items-center justify-between'>
+              <h3 className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+                Chapters
+              </h3>
+              <button
+                type='button'
+                onClick={() => setIsChaptersOpen((v) => !v)}
+                className='hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
+                aria-label={isChaptersOpen ? 'Collapse chapters' : 'Expand chapters'}
+              >
+                <ion-icon name={isChaptersOpen ? 'chevron-up-outline' : 'chevron-down-outline'}></ion-icon>
+              </button>
+            </div>
+            <ul className={`flex flex-col gap-1 ${!isChaptersOpen ? 'md:hidden' : ''}`}>
               {chapters.map((chapter) => {
                 const isRead = readChapters.has(chapter.title);
                 return (
@@ -867,6 +953,41 @@ export const LearnView = () => {
           confirmVariant='danger'
           isLoading={isDeleting}
         />
+
+        <Modal
+          open={showNoteModal}
+          onClose={() => savePendingHighlight(false)}
+          title={`Add a note to ${
+            userHighlights.find((h) => h.id === pendingHighlight?.highlightId)
+              ?.label || "highlight"
+          }`}
+          zIndex={30}
+        >
+          <div className='flex flex-col gap-4'>
+            <p className='text-sm text-dr-text-muted'>
+              Optional: add a note for the selected text, or close to save the highlight without a note.
+            </p>
+            <textarea
+              value={highlightNote}
+              onChange={(e) => setHighlightNote(e.target.value)}
+              placeholder='Write your note here...'
+              rows={4}
+              className='w-full resize-none rounded-xl border border-dr-border bg-dr-surface px-4 py-3 text-sm text-dr-text outline-none transition-colors placeholder:text-dr-text-muted focus:border-dr-accent focus:ring-2 focus:ring-dr-accent/25'
+              autoFocus
+            />
+            <div className='flex justify-end gap-2'>
+              <Button
+                secondary
+                onClick={() => savePendingHighlight(false)}
+              >
+                Skip
+              </Button>
+              <Button primary onClick={() => savePendingHighlight(true)}>
+                Save note
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal
           open={showEditModal}

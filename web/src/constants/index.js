@@ -27,6 +27,10 @@ export const API_GET_COURSE_IMAGES = API_BASE + "/course-images";
 export const API_PUT_COURSE_COVER = API_BASE + "/course-cover";
 export const API_GET_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights";
 export const API_PUT_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights";
+export const API_GET_HIGHLIGHTS = API_BASE + "/highlights";
+export const API_POST_HIGHLIGHTS = API_BASE + "/highlights";
+export const API_PUT_HIGHLIGHTS = API_BASE + "/highlights";
+export const API_DELETE_HIGHLIGHTS = API_BASE + "/highlights";
 export const API_POST_COURSE_COVER_IMAGE = API_BASE + "/course-cover-image";
 export const API_POST_CHAPTER_IMAGE = API_BASE + "/chapter-image";
 export const API_GET_READING_PROGRESS = API_BASE + "/reading-progress";
@@ -45,6 +49,7 @@ export const TANJREEN_API_URL = import.meta.env.TANJREEN_API_URL;
 export const TANJREEN_API_KEY = import.meta.env.TANJREEN_API_KEY;
 
 export const ROUTE_SUBJECTS = "/subjects";
+export const ROUTE_HIGHLIGHTS = "/highlights";
 
 // user statuses
 export const USER_STATUS_PENDING = "pending";

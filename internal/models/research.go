@@ -650,14 +650,27 @@ func (r *Research) ReadContent() (string, error) {
 
 // Highlight represents a user-created text highlight stored in the database.
 type Highlight struct {
-	ID        int       `json:"id"`
-	UserID    uint      `json:"userId"`
-	CourseID  int       `json:"courseId"`
-	Chapter   string    `json:"chapter"`
-	Text      string    `json:"text"`
-	Color     string    `json:"color"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          int       `json:"id"`
+	UserID      uint      `json:"userId"`
+	CourseID    int       `json:"courseId"`
+	HighlightID int       `json:"highlightId"`
+	Chapter     string    `json:"chapter"`
+	Text        string    `json:"text"`
+	Note        string    `json:"note"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// UserHighlight represents a user-defined highlight style (label + color) that can be
+// reused across courses.
+type UserHighlight struct {
+	ID          int       `json:"id"`
+	UserID      uint      `json:"userId"`
+	Label       string    `json:"label"`
+	Color       string    `json:"color"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // getCourseID returns the database id of a user's course by title.
@@ -688,7 +701,7 @@ func ReadHighlights(userId uint, title string) ([]Highlight, error) {
 	}
 
 	rows, err := ModelsRepo.DB.Conn.Query(
-		"SELECT id, user_id, course_id, chapter, text, color, created_at, updated_at FROM course_highlights WHERE user_id = ? AND course_id = ? ORDER BY created_at",
+		"SELECT id, user_id, course_id, highlight_id, chapter, text, note, created_at, updated_at FROM course_highlights WHERE user_id = ? AND course_id = ? ORDER BY created_at",
 		userId, courseId,
 	)
 	if err != nil {
@@ -700,7 +713,7 @@ func ReadHighlights(userId uint, title string) ([]Highlight, error) {
 	for rows.Next() {
 		var h Highlight
 		if err := rows.Scan(
-			&h.ID, &h.UserID, &h.CourseID, &h.Chapter, &h.Text, &h.Color, &h.CreatedAt, &h.UpdatedAt,
+			&h.ID, &h.UserID, &h.CourseID, &h.HighlightID, &h.Chapter, &h.Text, &h.Note, &h.CreatedAt, &h.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan highlight: %w", err)
 		}
@@ -734,12 +747,12 @@ func WriteHighlights(userId uint, title string, highlights []Highlight) error {
 	}
 
 	for _, h := range highlights {
-		if strings.TrimSpace(h.Text) == "" || strings.TrimSpace(h.Color) == "" {
+		if strings.TrimSpace(h.Text) == "" || h.HighlightID <= 0 {
 			continue
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO course_highlights (user_id, course_id, chapter, text, color) VALUES (?, ?, ?, ?, ?)",
-			userId, courseId, h.Chapter, h.Text, h.Color,
+			"INSERT INTO course_highlights (user_id, course_id, highlight_id, chapter, text, note) VALUES (?, ?, ?, ?, ?, ?)",
+			userId, courseId, h.HighlightID, h.Chapter, h.Text, h.Note,
 		); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to insert highlight: %w", err)
@@ -747,6 +760,96 @@ func WriteHighlights(userId uint, title string, highlights []Highlight) error {
 	}
 
 	return tx.Commit()
+}
+
+// ListUserHighlights returns all user-defined highlights for a user.
+func ListUserHighlights(userId uint) ([]UserHighlight, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return nil, fmt.Errorf("database is not available")
+	}
+	rows, err := ModelsRepo.DB.Conn.Query(
+		"SELECT id, user_id, label, color, description, created_at, updated_at FROM highlights WHERE user_id = ? ORDER BY created_at",
+		userId,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read highlights: %w", err)
+	}
+	defer rows.Close()
+
+	highlights := []UserHighlight{}
+	for rows.Next() {
+		var h UserHighlight
+		if err := rows.Scan(
+			&h.ID, &h.UserID, &h.Label, &h.Color, &h.Description, &h.CreatedAt, &h.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan highlight: %w", err)
+		}
+		highlights = append(highlights, h)
+	}
+	return highlights, nil
+}
+
+// CreateUserHighlight inserts a new user-defined highlight.
+func CreateUserHighlight(userId uint, label, color, description string) (int, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return 0, fmt.Errorf("database is not available")
+	}
+	res, err := ModelsRepo.DB.Conn.Exec(
+		"INSERT INTO highlights (user_id, label, color, description) VALUES (?, ?, ?, ?)",
+		userId, label, color, description,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create highlight: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get highlight id: %w", err)
+	}
+	return int(id), nil
+}
+
+// UpdateUserHighlight updates a user-defined highlight if it belongs to the user.
+func UpdateUserHighlight(userId uint, id int, label, color, description string) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	res, err := ModelsRepo.DB.Conn.Exec(
+		"UPDATE highlights SET label = ?, color = ?, description = ? WHERE id = ? AND user_id = ?",
+		label, color, description, id, userId,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update highlight: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check update: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("highlight not found")
+	}
+	return nil
+}
+
+// DeleteUserHighlight deletes a user-defined highlight if it belongs to the user.
+func DeleteUserHighlight(userId uint, id int) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	res, err := ModelsRepo.DB.Conn.Exec(
+		"DELETE FROM highlights WHERE id = ? AND user_id = ?",
+		id, userId,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete highlight: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check delete: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("highlight not found")
+	}
+	return nil
 }
 
 // markdownLinkPattern matches markdown links [text](url).

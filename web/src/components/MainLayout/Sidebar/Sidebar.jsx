@@ -3,6 +3,7 @@ import {
   ROUTE_CREATE,
   ROUTE_HOME,
   ROUTE_SUBJECTS,
+  ROUTE_HIGHLIGHTS,
   ROUTE_USERS_ME,
 } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -14,6 +15,7 @@ const GENERAL = [
   { label: "Courses", icon: "book-outline", to: ROUTE_HOME },
   { label: "Create", icon: "add-circle-outline", to: ROUTE_CREATE },
   { label: "Subjects", icon: "pricetag-outline", to: ROUTE_SUBJECTS },
+  { label: "Highlights", icon: "color-palette-outline", to: ROUTE_HIGHLIGHTS },
 ];
 
 const NavItem = ({ item, onClick }) => {

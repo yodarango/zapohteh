@@ -5,6 +5,7 @@ import {
   LearnView,
   CoursesView,
   SubjectsView,
+  HighlightsView,
   MeView,
 } from "@views";
 import { MainLayout, ProtectedRoute, AuthRoute } from "@components";
@@ -23,6 +24,7 @@ import {
   ROUTE_SUBJECTS,
   ROUTE_USERS_ME,
   ROUTE_CREATE,
+  ROUTE_HIGHLIGHTS,
 } from "@constants";
 
 const router = createBrowserRouter(
@@ -33,6 +35,7 @@ const router = createBrowserRouter(
           <Route path={ROUTE_HOME} element={<CoursesView />} />
           <Route path={ROUTE_CREATE} element={<IndexView />} />
           <Route path={ROUTE_SUBJECTS} element={<SubjectsView />} />
+          <Route path={ROUTE_HIGHLIGHTS} element={<HighlightsView />} />
           <Route path={ROUTE_USERS_ME} element={<MeView />} />
           <Route path={`${ROUTE_LEARN}/:topic`} element={<LearnView />} />
         </Route>

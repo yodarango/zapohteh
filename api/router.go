@@ -30,6 +30,9 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_COVER, models.Authenticate(PutCourseCover))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_HIGHLIGHTS, models.Authenticate(GetCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_HIGHLIGHTS, models.Authenticate(PutCourseHighlights))
+	mux.HandleFunc(constants.ROUTE_HIGHLIGHTS, models.Authenticate(HighlightsHandler))
+	mux.HandleFunc(constants.ROUTE_PUT_HIGHLIGHTS, models.Authenticate(PutHighlight))
+	mux.HandleFunc(constants.ROUTE_DELETE_HIGHLIGHTS, models.Authenticate(DeleteHighlight))
 	mux.HandleFunc(constants.ROUTE_POST_COURSE_COVER_IMAGE, models.Authenticate(CreateCourseCoverImage))
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
@@ -621,6 +624,217 @@ func PutCourseHighlights(w http.ResponseWriter, r *http.Request) {
 		"topic":      requestBody.Topic,
 		"highlights": requestBody.Highlights,
 	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Dispatches GET and POST requests for the user-defined highlights endpoint.
+*********************************************************************/
+func HighlightsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		GetHighlights(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		PostHighlights(w, r)
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+/************************************************************************
+* Returns all user-defined highlights for the authenticated user.
+*********************************************************************/
+func GetHighlights(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	highlights, err := models.ListUserHighlights(authUser.Id)
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = highlights
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Creates a new user-defined highlight.
+*********************************************************************/
+func PostHighlights(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Label       string `json:"label"`
+		Color       string `json:"color"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Label) == "" {
+		httpResponse.Error = "label is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+	if strings.TrimSpace(requestBody.Color) == "" {
+		httpResponse.Error = "color is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	id, err := models.CreateUserHighlight(authUser.Id, strings.TrimSpace(requestBody.Label), strings.TrimSpace(requestBody.Color), strings.TrimSpace(requestBody.Description))
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]interface{}{
+		"id": id,
+	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Updates a user-defined highlight.
+*********************************************************************/
+func PutHighlight(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		httpResponse.Error = "invalid highlight id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	var requestBody struct {
+		Label       string `json:"label"`
+		Color       string `json:"color"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		httpResponse.Error = "Invalid request format"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if strings.TrimSpace(requestBody.Label) == "" {
+		httpResponse.Error = "label is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+	if strings.TrimSpace(requestBody.Color) == "" {
+		httpResponse.Error = "color is required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.UpdateUserHighlight(authUser.Id, id, strings.TrimSpace(requestBody.Label), strings.TrimSpace(requestBody.Color), strings.TrimSpace(requestBody.Description)); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Highlight updated"}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Deletes a user-defined highlight.
+*********************************************************************/
+func DeleteHighlight(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		httpResponse.Error = "invalid highlight id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.DeleteUserHighlight(authUser.Id, id); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Highlight deleted"}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
