@@ -31,6 +31,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_HIGHLIGHTS, models.Authenticate(GetCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_GET_ALL_COURSE_HIGHLIGHTS, models.Authenticate(GetAllCourseHighlights))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_HIGHLIGHTS, models.Authenticate(PutCourseHighlights))
+	mux.HandleFunc(constants.ROUTE_DELETE_COURSE_HIGHLIGHTS, models.Authenticate(DeleteCourseHighlight))
 	mux.HandleFunc(constants.ROUTE_HIGHLIGHTS, models.Authenticate(HighlightsHandler))
 	mux.HandleFunc(constants.ROUTE_PUT_HIGHLIGHTS, models.Authenticate(PutHighlight))
 	mux.HandleFunc(constants.ROUTE_DELETE_HIGHLIGHTS, models.Authenticate(DeleteHighlight))
@@ -623,6 +624,45 @@ func GetAllCourseHighlights(w http.ResponseWriter, r *http.Request) {
 		"limit":      limit,
 		"offset":     offset,
 	}
+	httpResponse.Success = true
+	httpResponse.Error = nil
+	httpResponse.Send(w)
+}
+
+/************************************************************************
+* Deletes a single course highlight for the authenticated user.
+*********************************************************************/
+func DeleteCourseHighlight(w http.ResponseWriter, r *http.Request) {
+	var httpResponse models.HttpResponse
+
+	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
+	if !ok {
+		httpResponse.Error = "Authentication required"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		httpResponse.Error = "invalid highlight id"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	if err := models.DeleteCourseHighlight(authUser.Id, id); err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	httpResponse.Data = map[string]string{"message": "Highlight deleted"}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)

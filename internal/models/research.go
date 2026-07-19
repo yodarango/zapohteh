@@ -801,6 +801,28 @@ func ReadHighlights(userId uint, title string) ([]Highlight, error) {
 	return highlights, nil
 }
 
+// DeleteCourseHighlight deletes a single course highlight by id if it belongs to the user.
+func DeleteCourseHighlight(userId uint, id int) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	res, err := ModelsRepo.DB.Conn.Exec(
+		"DELETE FROM course_highlights WHERE id = ? AND user_id = ?",
+		id, userId,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete highlight: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check delete: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("highlight not found")
+	}
+	return nil
+}
+
 // WriteHighlights replaces all highlights for a user's course with the given list.
 func WriteHighlights(userId uint, title string, highlights []Highlight) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {

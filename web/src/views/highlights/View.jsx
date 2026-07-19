@@ -3,88 +3,9 @@ import { Loading } from "@ds";
 import { API_GET_ALL_COURSE_HIGHLIGHTS } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
+import { HighlightCard } from "./HighlightCard";
 
 const PAGE_SIZE = 20;
-
-const HighlightCard = ({ highlight }) => {
-  const highlightColor = highlight.color || "#ffffff";
-
-  return (
-    <article className='w-full overflow-hidden rounded-2xl border border-dr-border bg-white min-[700px]:min-w-[330px] min-[700px]:max-w-[500px] min-[700px]:flex-1'>
-      <header className='flex items-center gap-3 border-b border-black/10 px-4 py-3'>
-        <div
-          className='h-10 w-10 shrink-0 rounded-full border-2 border-black/10'
-          style={{ backgroundColor: highlightColor }}
-          aria-hidden='true'
-        />
-
-        <div className='min-w-0 flex-1'>
-          <h3 className='truncate text-sm font-semibold text-black'>
-            {highlight.courseTitle}
-          </h3>
-
-          {highlight.lessonTitle && (
-            <p className='truncate text-xs text-black/60'>
-              {highlight.lessonTitle}
-            </p>
-          )}
-        </div>
-
-        <ion-icon name='ellipsis-horizontal' className='text-xl text-black' />
-      </header>
-
-      <div className='relative aspect-square overflow-hidden bg-white'>
-        {highlight.coverImagePath ? (
-          <img
-            src={highlight.coverImagePath}
-            alt={highlight.courseTitle}
-            className='absolute inset-0 h-full w-full object-cover opacity-30'
-          />
-        ) : (
-          <div className='absolute inset-0 flex items-center justify-center bg-white'>
-            <ion-icon name='image-outline' className='text-5xl text-black/20' />
-          </div>
-        )}
-
-        <div className='absolute inset-0 bg-white/20' />
-
-        <div className='relative z-10 flex h-full items-center justify-center p-8'>
-          <blockquote className='max-w-md text-center text-xl font-bold leading-relaxed text-black sm:text-2xl'>
-            “{highlight.text}”
-          </blockquote>
-        </div>
-      </div>
-
-      <div className='border-t border-black/10 bg-white px-4 py-4'>
-        {/* <div className='mb-3 flex items-center justify-between'>
-          <div className='flex items-center gap-4'>
-            <ion-icon name='heart-outline' className='text-2xl text-black' />
-
-            <ion-icon
-              name='chatbubble-outline'
-              className='text-2xl text-black'
-            />
-
-            <ion-icon
-              name='paper-plane-outline'
-              className='text-2xl text-black'
-            />
-          </div>
-
-          <ion-icon name='bookmark-outline' className='text-2xl text-black' />
-        </div> */}
-
-        {highlight.note && (
-          <p className='text-sm leading-relaxed text-black'>
-            <span className='mr-2 font-semibold'>{highlight.courseTitle}</span>
-
-            {highlight.note}
-          </p>
-        )}
-      </div>
-    </article>
-  );
-};
 
 export const HighlightsView = () => {
   const { showToast } = useAppContext();
@@ -95,6 +16,10 @@ export const HighlightsView = () => {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
   const sentinelRef = useRef(null);
+
+  const handleDelete = (id) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id));
+  };
 
   const fetchHighlights = useCallback(
     async (currentOffset, append = false) => {
@@ -195,7 +120,11 @@ export const HighlightsView = () => {
       {!initialLoading && highlights.length > 0 && (
         <div className='grid grid-cols-1 gap-6 min-[700px]:grid-cols-2 xl:grid-cols-3'>
           {highlights.map((highlight) => (
-            <HighlightCard key={highlight.id} highlight={highlight} />
+            <HighlightCard
+              key={highlight.id}
+              highlight={highlight}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
       )}

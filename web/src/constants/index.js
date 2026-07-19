@@ -28,6 +28,7 @@ export const API_PUT_COURSE_COVER = API_BASE + "/course-cover";
 export const API_GET_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights";
 export const API_GET_ALL_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights/all";
 export const API_PUT_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights";
+export const API_DELETE_COURSE_HIGHLIGHTS = API_BASE + "/course-highlights";
 export const API_GET_HIGHLIGHTS = API_BASE + "/highlights";
 export const API_POST_HIGHLIGHTS = API_BASE + "/highlights";
 export const API_PUT_HIGHLIGHTS = API_BASE + "/highlights";

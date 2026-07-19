@@ -98,7 +98,7 @@ export const ChatPanel = ({ topic, chapters }) => {
         />
       </div>
 
-      <div className='mb-3 max-h-48 overflow-y-auto'>
+      <div className='mb-3 max-h-[500px] overflow-y-auto'>
         {messages.map((msg, idx) => (
           <div
             key={msg.id || idx}
