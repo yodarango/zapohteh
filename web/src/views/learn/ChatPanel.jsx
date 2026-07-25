@@ -85,19 +85,6 @@ export const ChatPanel = ({ topic, chapters }) => {
         Assistant
       </h3>
 
-      <div className='mb-3'>
-        <Select
-          label=''
-          value={chapter}
-          onChange={(val) => setChapter(val)}
-          placeholder='Select a chapter'
-          options={[
-            { value: "generic", label: "Generic" },
-            ...chapters.map((c) => ({ value: c.title, label: c.title })),
-          ]}
-        />
-      </div>
-
       <div className='mb-3 max-h-48 overflow-y-auto'>
         {messages.map((msg, idx) => (
           <div
@@ -120,6 +107,18 @@ export const ChatPanel = ({ topic, chapters }) => {
       </div>
 
       <div className='flex flex-col gap-2'>
+        <div className='mb-3'>
+          <Select
+            label=''
+            value={chapter}
+            onChange={(val) => setChapter(val)}
+            placeholder='Select a chapter'
+            options={[
+              { value: "generic", label: "Generic" },
+              ...chapters.map((c) => ({ value: c.title, label: c.title })),
+            ]}
+          />
+        </div>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

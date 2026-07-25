@@ -633,9 +633,13 @@ export const LearnView = () => {
     const text = selection.toString().trim();
     if (!text) return;
 
-    const newHighlights = [...highlights, { text, color: activeHighlightColor }];
+    const newHighlights = [
+      ...highlights,
+      { text, color: activeHighlightColor },
+    ];
     saveHighlights(newHighlights);
     selection.removeAllRanges();
+    setActiveHighlightColor("");
   };
 
   return (
@@ -858,9 +862,7 @@ export const LearnView = () => {
                 <button
                   key={color}
                   type='button'
-                  onClick={() =>
-                    setActiveHighlightColor(selected ? "" : color)
-                  }
+                  onClick={() => setActiveHighlightColor(selected ? "" : color)}
                   className={`h-8 w-8 rounded-full border-2 transition-transform ${
                     selected
                       ? "border-dr-text scale-110"
