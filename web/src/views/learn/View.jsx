@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -9,6 +9,8 @@ import {
   Modal,
   Input,
   Select,
+  TextArea,
+  Portal,
 } from "@ds";
 import {
   API_GET_TOPIC,
@@ -22,10 +24,9 @@ import {
   API_PUT_COURSE,
   API_GET_COURSE_IMAGES,
   API_PUT_COURSE_COVER,
-  API_GET_COURSE_MD,
-  API_PUT_COURSE_MD,
   API_GET_COURSE_HIGHLIGHTS,
   API_PUT_COURSE_HIGHLIGHTS,
+  API_GET_HIGHLIGHTS,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
@@ -54,7 +55,7 @@ const chapterSlug = (title) =>
 export const LearnView = () => {
   const { topic } = useParams();
   const navigate = useNavigate();
-  const { showToast } = useAppContext();
+  const { showToast, state, closeLearnMenu } = useAppContext();
 
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
@@ -62,7 +63,7 @@ export const LearnView = () => {
   const [loading, setLoading] = useState(true);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
-  // titles of chapters that have been marked as read
+  // zero-based indices of chapters that have been marked as read
   const [readChapters, setReadChapters] = useState(new Set());
   // all available subjects and the ids currently assigned to this course
   const [subjects, setSubjects] = useState([]);
@@ -77,22 +78,121 @@ export const LearnView = () => {
   const [editSubjectIds, setEditSubjectIds] = useState(new Set());
   const [courseImages, setCourseImages] = useState([]);
   const [selectedCoverImage, setSelectedCoverImage] = useState("");
-  const [isEditingContent, setIsEditingContent] = useState(false);
-  const [editContent, setEditContent] = useState("");
-  const [isSavingContent, setIsSavingContent] = useState(false);
   const [highlights, setHighlights] = useState([]);
-  const [activeHighlightColor, setActiveHighlightColor] = useState("");
-  const contentRef = useRef(null);
+  const [userHighlights, setUserHighlights] = useState([]);
+  const [isChaptersOpen, setIsChaptersOpen] = useState(true);
+  const [showHighlightPopup, setShowHighlightPopup] = useState(false);
+  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
+  const [pendingHighlight, setPendingHighlight] = useState(null);
+  const [highlightNote, setHighlightNote] = useState("");
+  const [editingHighlight, setEditingHighlight] = useState(null);
+  const [viewingNote, setViewingNote] = useState(null);
 
-  const HIGHLIGHT_COLORS = [
-    "#ffeb3b",
-    "#ff9f43",
-    "#ff6b6b",
-    "#48dbfb",
-    "#1dd1a1",
-    "#f368e0",
-    "#a29bfe",
-  ];
+  const renderMarkdownWithHighlights = (markdown, chapter = "") => {
+    if (!markdown) return "";
+    const html = marked.parse(markdown);
+    if (!highlights.length) return html;
+
+    const relevant = chapter
+      ? highlights.filter((h) => h.chapter === chapter)
+      : highlights.filter((h) => !h.chapter);
+    if (!relevant.length) return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const body = doc.body;
+
+    relevant.forEach(({ text, highlightId, chapter: chapterName, note }) => {
+      if (!text) return;
+      const userHighlight = userHighlights.find((h) => h.id === highlightId);
+      const color = userHighlight?.color || "#ffeb3b";
+      const walker = document.createTreeWalker(
+        body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false,
+      );
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement?.closest("mark.highlight")) continue;
+        if (node.textContent.includes(text)) {
+          textNodes.push(node);
+        }
+      }
+
+      textNodes.forEach((textNode) => {
+        const parts = textNode.textContent.split(text);
+        if (parts.length <= 1) return;
+
+        const fragment = document.createDocumentFragment();
+        parts.forEach((part, index) => {
+          fragment.appendChild(document.createTextNode(part));
+          if (index < parts.length - 1) {
+            const mark = document.createElement("mark");
+            mark.className =
+              "highlight rounded-md px-1 py-0.5 box-decoration-clone";
+            mark.style.backgroundColor = color;
+            mark.appendChild(document.createTextNode(text));
+            if (note) {
+              mark.setAttribute("title", note);
+            }
+
+            const actions = document.createElement("span");
+            actions.className =
+              "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
+
+            const editBtn = document.createElement("button");
+            editBtn.className =
+              "highlight-edit inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
+            editBtn.setAttribute("data-highlight-text", text);
+            editBtn.setAttribute("data-highlight-id", String(highlightId));
+            editBtn.setAttribute("data-highlight-chapter", chapterName || "");
+            editBtn.setAttribute("data-highlight-note", note || "");
+            editBtn.setAttribute("aria-label", "Edit highlight");
+            editBtn.setAttribute("title", "Edit highlight");
+            editBtn.innerHTML = "<ion-icon name='create-outline'></ion-icon>";
+            actions.appendChild(editBtn);
+
+            if (note) {
+              const noteBtn = document.createElement("button");
+              noteBtn.className =
+                "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
+              noteBtn.setAttribute("data-highlight-note", note);
+              noteBtn.setAttribute("data-highlight-text", text);
+              noteBtn.setAttribute("data-highlight-chapter", chapterName || "");
+              noteBtn.setAttribute(
+                "data-highlight-label",
+                userHighlight?.label || "",
+              );
+              noteBtn.setAttribute("aria-label", "View note");
+              noteBtn.setAttribute("title", "View note");
+              noteBtn.innerHTML =
+                "<ion-icon name='document-outline'></ion-icon>";
+              actions.appendChild(noteBtn);
+            }
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className =
+              "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
+            deleteBtn.setAttribute("data-highlight-text", text);
+            deleteBtn.setAttribute("data-highlight-id", String(highlightId));
+            deleteBtn.setAttribute("data-highlight-chapter", chapterName || "");
+            deleteBtn.setAttribute("aria-label", "Remove highlight");
+            deleteBtn.setAttribute("title", "Remove highlight");
+            deleteBtn.textContent = "×";
+            actions.appendChild(deleteBtn);
+
+            mark.appendChild(actions);
+            fragment.appendChild(mark);
+          }
+        });
+        textNode.parentNode.replaceChild(fragment, textNode);
+      });
+    });
+
+    return body.innerHTML;
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,7 +235,7 @@ export const LearnView = () => {
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
-          setReadChapters(new Set(progressResult.data));
+          setReadChapters(new Set(progressResult.data.map((i) => Number(i))));
         }
 
         if (subjectsResult.data && Array.isArray(subjectsResult.data)) {
@@ -151,15 +251,25 @@ export const LearnView = () => {
           );
         }
 
-        // Load saved highlights.
+        // Load saved course highlights and user-defined highlights.
         try {
-          const highlightsRes = await fetch(
-            `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
-            { headers: authHeaders() },
-          );
+          const [highlightsRes, userHighlightsRes] = await Promise.all([
+            fetch(
+              `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
+              { headers: authHeaders() },
+            ),
+            fetch(API_GET_HIGHLIGHTS, { headers: authHeaders() }),
+          ]);
           const highlightsResult = await highlightsRes.json();
+          const userHighlightsResult = await userHighlightsRes.json();
           if (highlightsRes.ok && highlightsResult.data?.highlights) {
             setHighlights(highlightsResult.data.highlights);
+          }
+          if (
+            userHighlightsRes.ok &&
+            Array.isArray(userHighlightsResult.data)
+          ) {
+            setUserHighlights(userHighlightsResult.data);
           }
         } catch {
           // ignore highlights loading errors
@@ -176,59 +286,6 @@ export const LearnView = () => {
     })();
     return () => controller.abort();
   }, [topic]);
-
-  useEffect(() => {
-    if (!contentRef.current || isEditingContent || highlights.length === 0) {
-      return;
-    }
-
-    const container = contentRef.current;
-
-    // Remove existing highlights so we can re-apply cleanly.
-    container.querySelectorAll("mark.highlight").forEach((mark) => {
-      const parent = mark.parentNode;
-      parent.replaceChild(document.createTextNode(mark.textContent), mark);
-      parent.normalize();
-    });
-
-    // Apply each highlight to text nodes in the rendered content.
-    highlights.forEach(({ text, color }) => {
-      if (!text) return;
-      const walker = document.createTreeWalker(
-        container,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false,
-      );
-      const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node.parentElement?.closest("mark.highlight")) continue;
-        if (node.textContent.includes(text)) {
-          textNodes.push(node);
-        }
-      }
-
-      textNodes.forEach((textNode) => {
-        const parts = textNode.textContent.split(text);
-        if (parts.length <= 1) return;
-
-        const fragment = document.createDocumentFragment();
-        parts.forEach((part, index) => {
-          fragment.appendChild(document.createTextNode(part));
-          if (index < parts.length - 1) {
-            const mark = document.createElement("mark");
-            mark.className = "highlight";
-            mark.style.backgroundColor = color;
-            mark.style.borderRadius = "2px";
-            mark.textContent = text;
-            fragment.appendChild(mark);
-          }
-        });
-        textNode.parentNode.replaceChild(fragment, textNode);
-      });
-    });
-  }, [highlights, content, isEditingContent]);
 
   const createImage = async (chapter) => {
     setGenerating((prev) => new Set(prev).add(chapter));
@@ -299,6 +356,91 @@ export const LearnView = () => {
     }
   };
 
+  const saveHighlights = async (newHighlights, message = "Highlight saved") => {
+    try {
+      const res = await fetch(API_PUT_COURSE_HIGHLIGHTS, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          topic,
+          highlights: newHighlights,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        throw new Error(result.error || "Failed to save highlights");
+      }
+      setHighlights(newHighlights);
+      showToast({ type: "success", message });
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to save highlights",
+      });
+    }
+  };
+
+  const savePendingHighlight = (withNote) => {
+    if (!pendingHighlight?.highlightId) return;
+    const newHighlight = {
+      ...pendingHighlight,
+      note: withNote ? highlightNote.trim() : "",
+    };
+
+    let newHighlights;
+    if (editingHighlight) {
+      newHighlights = highlights.map((h) =>
+        h.text === editingHighlight.text &&
+        h.highlightId === editingHighlight.highlightId &&
+        h.chapter === editingHighlight.chapter
+          ? newHighlight
+          : h,
+      );
+    } else {
+      newHighlights = [...highlights, newHighlight];
+    }
+
+    saveHighlights(
+      newHighlights,
+      editingHighlight ? "Highlight updated" : withNote ? "Highlight and note saved" : "Highlight saved",
+    );
+    setShowHighlightPopup(false);
+    setEditingHighlight(null);
+    setPendingHighlight(null);
+    setHighlightNote("");
+  };
+
+  const cancelPendingHighlight = () => {
+    setShowHighlightPopup(false);
+    setEditingHighlight(null);
+    setPendingHighlight(null);
+    setHighlightNote("");
+  };
+
+  useEffect(() => {
+    if (!showHighlightPopup) return;
+
+    const handleClickOutside = (e) => {
+      if (!e.target.closest("[data-highlight-popup]")) {
+        cancelPendingHighlight();
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        cancelPendingHighlight();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showHighlightPopup]);
+
   if (loading) {
     return (
       <div className='flex justify-center py-20'>
@@ -309,19 +451,23 @@ export const LearnView = () => {
 
   const { intro, chapters } = splitChapters(content);
 
-  const toggleRead = async (chapter) => {
-    const nextRead = !readChapters.has(chapter);
+  const toggleRead = async (chapterIndex) => {
+    const nextRead = !readChapters.has(chapterIndex);
     setReadChapters((prev) => {
       const next = new Set(prev);
-      if (nextRead) next.add(chapter);
-      else next.delete(chapter);
+      if (nextRead) next.add(chapterIndex);
+      else next.delete(chapterIndex);
       return next;
     });
     try {
       await fetch(API_POST_READING_PROGRESS, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ course: topic, chapter, read: nextRead }),
+        body: JSON.stringify({
+          course: topic,
+          chapterIndex,
+          read: nextRead,
+        }),
       });
       showToast({
         type: "success",
@@ -335,8 +481,8 @@ export const LearnView = () => {
       // revert on error
       setReadChapters((prev) => {
         const next = new Set(prev);
-        if (nextRead) next.delete(chapter);
-        else next.add(chapter);
+        if (nextRead) next.delete(chapterIndex);
+        else next.add(chapterIndex);
         return next;
       });
     }
@@ -348,6 +494,7 @@ export const LearnView = () => {
     if (element) {
       element.scrollIntoView({ behavior: "auto", block: "start" });
     }
+    closeLearnMenu();
   };
 
   const progress = chapters.length
@@ -549,104 +696,102 @@ export const LearnView = () => {
     }
   };
 
-  const startEditContent = async () => {
-    try {
-      const res = await fetch(
-        `${API_GET_COURSE_MD}?topic=${encodeURIComponent(topic)}`,
-        { headers: authHeaders() },
-      );
-      const result = await res.json();
-      if (!res.ok || result.error) {
-        throw new Error(result.error || "Failed to load markdown");
-      }
-      setEditContent(result.data?.content || "");
-      setIsEditingContent(true);
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to load markdown",
-      });
+  const deleteHighlight = (text, highlightId, chapter) => {
+    const id = Number(highlightId);
+    const newHighlights = highlights.filter(
+      (h) =>
+        !(h.text === text && h.highlightId === id && h.chapter === chapter),
+    );
+    saveHighlights(newHighlights, "Highlight removed");
+  };
+
+  const getChapterFromSelection = (selection) => {
+    if (!selection.rangeCount) return "";
+    const range = selection.getRangeAt(0);
+    let node = range.commonAncestorContainer;
+    if (node.nodeType === Node.TEXT_NODE) {
+      node = node.parentElement;
     }
+    const section = node.closest("section[id]");
+    if (!section) return "";
+    const chapter = chapters.find((c) => chapterSlug(c.title) === section.id);
+    return chapter?.title || "";
   };
 
-  const saveContent = async () => {
-    setIsSavingContent(true);
-    try {
-      const res = await fetch(API_PUT_COURSE_MD, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          topic,
-          content: editContent,
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok || result.error) {
-        throw new Error(result.error || "Failed to save markdown");
-      }
-      setContent(marked(editContent));
-      setIsEditingContent(false);
-      showToast({ type: "success", message: "Markdown saved" });
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to save markdown",
-      });
-    } finally {
-      setIsSavingContent(false);
-    }
-  };
-
-  const cancelEditContent = () => {
-    setIsEditingContent(false);
-    setEditContent("");
-  };
-
-  const saveHighlights = async (newHighlights) => {
-    try {
-      const res = await fetch(API_PUT_COURSE_HIGHLIGHTS, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          topic,
-          highlights: newHighlights,
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok || result.error) {
-        throw new Error(result.error || "Failed to save highlights");
-      }
-      setHighlights(newHighlights);
-      showToast({ type: "success", message: "Highlight saved" });
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to save highlights",
-      });
-    }
-  };
-
-  const handleTextSelection = () => {
-    if (!activeHighlightColor || isEditingContent) return;
+  const handleTextSelection = (e) => {
+    const target =
+      e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+    if (target.closest(".highlight-delete")) return;
+    if (target.closest(".highlight-edit")) return;
+    if (target.closest(".highlight-note")) return;
 
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (!text) return;
 
-    const newHighlights = [
-      ...highlights,
-      { text, color: activeHighlightColor },
-    ];
-    saveHighlights(newHighlights);
-    selection.removeAllRanges();
-    setActiveHighlightColor("");
+    const chapter = getChapterFromSelection(selection);
+    const range = selection.rangeCount ? selection.getRangeAt(0) : null;
+    const rect = range ? range.getBoundingClientRect() : null;
+
+    setPendingHighlight({ text, chapter, highlightId: null });
+    setHighlightNote("");
+    setEditingHighlight(null);
+    setPopupPosition(
+      rect
+        ? { top: rect.top - 8, left: rect.left + rect.width / 2 }
+        : { top: 0, left: 0 }
+    );
+    setShowHighlightPopup(true);
+  };
+
+  const handleContentClick = (e) => {
+    const target =
+      e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+    const deleteBtn = target.closest(".highlight-delete");
+    const editBtn = target.closest(".highlight-edit");
+    const noteBtn = target.closest(".highlight-note");
+
+    if (deleteBtn) {
+      const text = deleteBtn.getAttribute("data-highlight-text");
+      const highlightId = deleteBtn.getAttribute("data-highlight-id");
+      const chapter = deleteBtn.getAttribute("data-highlight-chapter") || "";
+      if (text && highlightId) {
+        deleteHighlight(text, highlightId, chapter);
+      }
+      return;
+    }
+
+    if (editBtn) {
+      const text = editBtn.getAttribute("data-highlight-text") || "";
+      const highlightId = editBtn.getAttribute("data-highlight-id");
+      const chapter = editBtn.getAttribute("data-highlight-chapter") || "";
+      const note = editBtn.getAttribute("data-highlight-note") || "";
+      const rect = editBtn.getBoundingClientRect();
+      setEditingHighlight({ text, highlightId: Number(highlightId), chapter, note });
+      setPendingHighlight({ text, highlightId: Number(highlightId), chapter, note });
+      setHighlightNote(note);
+      setPopupPosition({
+        top: rect.top - 8,
+        left: rect.left + rect.width / 2,
+      });
+      setShowHighlightPopup(true);
+      return;
+    }
+
+    if (noteBtn) {
+      const note = noteBtn.getAttribute("data-highlight-note") || "";
+      const text = noteBtn.getAttribute("data-highlight-text") || "";
+      const chapter = noteBtn.getAttribute("data-highlight-chapter") || "";
+      const label = noteBtn.getAttribute("data-highlight-label") || "";
+      setViewingNote({ note, text, chapter, label });
+    }
   };
 
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
       <div
-        ref={contentRef}
         onMouseUp={handleTextSelection}
+        onClick={handleContentClick}
         className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
         <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
@@ -714,112 +859,251 @@ export const LearnView = () => {
           </div>
         )}
 
-        {isEditingContent ? (
-          <div className='flex flex-col gap-4'>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className='min-h-[500px] w-full rounded-2xl border border-dr-border bg-dr-surface p-4 font-mono text-sm text-dr-text'
-            />
-            <div className='flex justify-end gap-2'>
-              <Button
-                secondary
-                onClick={cancelEditContent}
-                disabled={isSavingContent}
-              >
-                Cancel
-              </Button>
-              <Button
-                primary
-                onClick={saveContent}
-                isLoading={isSavingContent}
-                disabled={isSavingContent}
-              >
-                Save
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {intro && (
+        {intro && (
+          <div
+            className='research-content'
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdownWithHighlights(intro),
+            }}
+          />
+        )}
+
+        {chapters.map((chapter, chapterIndex) => {
+          const isGenerating = generating.has(chapter.title);
+          return (
+            <section
+              key={chapter.title}
+              id={chapterSlug(chapter.title)}
+              className='mt-8 scroll-mt-6'
+            >
+              <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
+                {chapter.title}
+              </h4>
+
               <div
                 className='research-content'
-                dangerouslySetInnerHTML={{ __html: marked.parse(intro) }}
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdownWithHighlights(
+                    chapter.body,
+                    chapter.title,
+                  ),
+                }}
               />
-            )}
-
-            {chapters.map((chapter) => {
-              const isGenerating = generating.has(chapter.title);
-              return (
-                <section
-                  key={chapter.title}
-                  id={chapterSlug(chapter.title)}
-                  className='mt-8 scroll-mt-6'
-                >
-                  <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
-                    {chapter.title}
-                  </h4>
-
-                  <div
-                    className='research-content'
-                    dangerouslySetInnerHTML={{
-                      __html: marked.parse(chapter.body),
-                    }}
-                  />
-                  {/* chapter heading with its summary image action */}
-                  <div className='mb-3 flex items-start justify-between gap-4'>
-                    <div className='flex shrink-0 items-center gap-2'>
-                      <button
-                        type='button'
-                        onClick={() => toggleRead(chapter.title)}
-                        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
-                          readChapters.has(chapter.title)
-                            ? "border-dr-success bg-dr-success/10 text-dr-success"
-                            : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
-                        }`}
-                      >
-                        <ion-icon
-                          name={
-                            readChapters.has(chapter.title)
-                              ? "checkmark-circle"
-                              : "ellipse-outline"
-                          }
-                        ></ion-icon>
-                        <span>Mark read</span>
-                      </button>
-                      <Button
-                        secondary
-                        className='shrink-0 text-sm'
-                        disabled={isGenerating}
-                        onClick={() => createImage(chapter.title)}
-                      >
-                        {isGenerating ? (
-                          <Loading size={18} />
-                        ) : (
-                          <>
-                            <ion-icon name='image-outline'></ion-icon>
-                            <span className='ml-2'>Menmonic summary</span>
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-              );
-            })}
-          </>
-        )}
+              {/* chapter heading with its summary image action */}
+              <div className='mb-3 flex items-start justify-between gap-4'>
+                <div className='flex shrink-0 items-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => toggleRead(chapterIndex)}
+                    className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                      readChapters.has(chapterIndex)
+                        ? "border-dr-success bg-dr-success/10 text-dr-success"
+                        : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
+                    }`}
+                  >
+                    <ion-icon
+                      name={
+                        readChapters.has(chapterIndex)
+                          ? "checkmark-circle"
+                          : "ellipse-outline"
+                      }
+                    ></ion-icon>
+                    <span>Mark read</span>
+                  </button>
+                  <Button
+                    secondary
+                    className='shrink-0 text-sm'
+                    disabled={isGenerating}
+                    onClick={() => createImage(chapter.title)}
+                  >
+                    {isGenerating ? (
+                      <Loading size={18} />
+                    ) : (
+                      <>
+                        <ion-icon name='image-outline'></ion-icon>
+                        <span className='ml-2'>Menmonic summary</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          );
+        })}
       </div>
 
-      <div className='hidden overflow-auto md:block sticky top-0 self-start border-l border-dr-border pl-4 h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full max-w-[400px]'>
-        {chapters.length > 0 && (
-          <div className='py-4'>
-            <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-              Chapters
+      {showHighlightPopup && (
+        <Portal>
+          <div
+            data-highlight-popup
+            className='fixed z-50 w-[96vw] max-w-[600px] rounded-2xl border border-dr-border bg-dr-surface p-3 shadow-lg'
+            style={{
+              top: popupPosition.top,
+              left: popupPosition.left,
+              transform: "translate(-50%, -100%)",
+            }}
+          >
+            <div className='flex flex-col gap-3'>
+              <p className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+                {editingHighlight ? "Edit highlight" : "Highlight"}
+              </p>
+              {userHighlights.length === 0 ? (
+                <p className='max-w-[200px] text-xs text-dr-text-muted'>
+                  No highlights yet. Create them in the Highlights page.
+                </p>
+              ) : (
+                <>
+                  <TextArea
+                    value={pendingHighlight?.text || ""}
+                    onChange={(e) =>
+                      setPendingHighlight((prev) => ({
+                        ...prev,
+                        text: e.target.value,
+                      }))
+                    }
+                    placeholder='Highlighted text...'
+                    minRows={2}
+                    maxRows={4}
+                    className='w-full text-sm'
+                  />
+                  <div className='flex flex-wrap items-center gap-2'>
+                    {userHighlights.map((highlight) => {
+                      const selected =
+                        pendingHighlight?.highlightId === highlight.id;
+                      return (
+                        <button
+                          key={highlight.id}
+                          type='button'
+                          onClick={() =>
+                            setPendingHighlight((prev) => ({
+                              ...prev,
+                              highlightId: highlight.id,
+                            }))
+                          }
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all ${
+                            selected ? "border-dr-text" : "border-transparent"
+                          }`}
+                          style={{ backgroundColor: highlight.color }}
+                          title={highlight.label}
+                          aria-label={highlight.label}
+                        >
+                          {selected && (
+                            <ion-icon
+                              name='checkmark-outline'
+                              className='text-xs text-white'
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <TextArea
+                    value={highlightNote}
+                    onChange={(e) => setHighlightNote(e.target.value)}
+                    placeholder='Add a note (optional)...'
+                    minRows={2}
+                    maxRows={4}
+                    autoFocus={!editingHighlight}
+                    className='w-full text-sm'
+                  />
+                </>
+              )}
+              <div className='flex justify-end gap-2'>
+                <Button
+                  secondary
+                  className='px-3 py-1.5 text-xs'
+                  onClick={cancelPendingHighlight}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  primary
+                  className='px-3 py-1.5 text-xs'
+                  disabled={!pendingHighlight?.highlightId}
+                  onClick={() => savePendingHighlight(!!highlightNote.trim())}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      <div
+        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 bg-dr-surface p-4 flex flex-col" : "hidden"} md:flex md:flex-col md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}
+      >
+        {state.isLearnMenuOpen && (
+          <div className='mb-4 flex items-center justify-between md:hidden'>
+            <h3 className='text-sm font-semibold uppercase tracking-wide text-dr-text-muted'>
+              Menu
             </h3>
-            <ul className='flex flex-col gap-1'>
-              {chapters.map((chapter) => {
-                const isRead = readChapters.has(chapter.title);
+            <button
+              type='button'
+              onClick={closeLearnMenu}
+              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+              aria-label='Close menu'
+            >
+              <ion-icon name='close-outline'></ion-icon>
+              <span>Close</span>
+            </button>
+          </div>
+        )}
+        <div className='order-1 md:order-3'>
+          <ChatPanel topic={topic} chapters={chapters} />
+        </div>
+        <div className='order-3 md:order-4 mb-4'>
+          <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+            Actions
+          </h3>
+          <div className='flex flex-col gap-2'>
+            <Button secondary className='w-full' onClick={downloadPDF}>
+              <ion-icon name='download-outline'></ion-icon>
+              <span className='ml-2'>Download PDF</span>
+            </Button>
+            <Button secondary className='w-full' onClick={narrate}>
+              <ion-icon name='musical-notes-outline'></ion-icon>
+              <span className='ml-2'>Narrate</span>
+            </Button>
+            <Button
+              danger
+              className='w-full'
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <ion-icon name='trash-outline'></ion-icon>
+              <span className='ml-2'>Delete course</span>
+            </Button>
+          </div>
+        </div>
+
+        {chapters.length > 0 && (
+          <div className='order-4 md:order-1 py-4'>
+            <div className='mb-3 flex items-center justify-between'>
+              <h3 className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+                Chapters
+              </h3>
+              <button
+                type='button'
+                onClick={() => setIsChaptersOpen((v) => !v)}
+                className='hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
+                aria-label={
+                  isChaptersOpen ? "Collapse chapters" : "Expand chapters"
+                }
+              >
+                <ion-icon
+                  name={
+                    isChaptersOpen
+                      ? "chevron-up-outline"
+                      : "chevron-down-outline"
+                  }
+                ></ion-icon>
+              </button>
+            </div>
+            <ul
+              className={`flex flex-col gap-1 ${!isChaptersOpen ? "md:hidden" : ""}`}
+            >
+              {chapters.map((chapter, chapterIndex) => {
+                const isRead = readChapters.has(chapterIndex);
                 return (
                   <li key={chapter.title}>
                     <button
@@ -851,66 +1135,6 @@ export const LearnView = () => {
           </div>
         )}
 
-        <div className='mb-4'>
-          <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-            Highlighter
-          </h3>
-          <div className='flex flex-wrap items-center gap-2'>
-            {HIGHLIGHT_COLORS.map((color) => {
-              const selected = activeHighlightColor === color;
-              return (
-                <button
-                  key={color}
-                  type='button'
-                  onClick={() => setActiveHighlightColor(selected ? "" : color)}
-                  className={`h-8 w-8 rounded-full border-2 transition-transform ${
-                    selected
-                      ? "border-dr-text scale-110"
-                      : "border-transparent hover:scale-105"
-                  }`}
-                  style={{ backgroundColor: color }}
-                  title={selected ? "Disable highlighter" : "Select color"}
-                />
-              );
-            })}
-          </div>
-          <p className='mt-1 text-xs text-dr-text-muted'>
-            {activeHighlightColor
-              ? "Drag to highlight text"
-              : "Choose a color to start highlighting"}
-          </p>
-        </div>
-
-        <div className='mb-4'>
-          <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-            Actions
-          </h3>
-          <div className='flex flex-col gap-2'>
-            <Button secondary className='w-full' onClick={downloadPDF}>
-              <ion-icon name='download-outline'></ion-icon>
-              <span className='ml-2'>Download PDF</span>
-            </Button>
-            <Button secondary className='w-full' onClick={narrate}>
-              <ion-icon name='musical-notes-outline'></ion-icon>
-              <span className='ml-2'>Narrate</span>
-            </Button>
-            <Button secondary className='w-full' onClick={startEditContent}>
-              <ion-icon name='create-outline'></ion-icon>
-              <span className='ml-2'>Edit content</span>
-            </Button>
-            <Button
-              danger
-              className='w-full'
-              onClick={() => setShowDeleteModal(true)}
-            >
-              <ion-icon name='trash-outline'></ion-icon>
-              <span className='ml-2'>Delete course</span>
-            </Button>
-          </div>
-        </div>
-
-        <ChatPanel topic={topic} chapters={chapters} />
-
         <ConfirmationModal
           open={showDeleteModal}
           onClose={() => setShowDeleteModal(false)}
@@ -922,6 +1146,38 @@ export const LearnView = () => {
           confirmVariant='danger'
           isLoading={isDeleting}
         />
+
+        <Modal
+          open={viewingNote != null}
+          onClose={() => setViewingNote(null)}
+          title={viewingNote?.label ? `Note: ${viewingNote.label}` : "Note"}
+          zIndex={30}
+        >
+          <div className='flex flex-col gap-4'>
+            {viewingNote?.chapter && (
+              <p className='text-xs font-medium text-dr-text-muted'>
+                {viewingNote.chapter}
+              </p>
+            )}
+            {viewingNote?.text && (
+              <div className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3'>
+                <p className='text-sm italic text-dr-text'>
+                  "{viewingNote.text}"
+                </p>
+              </div>
+            )}
+            <div className='rounded-xl bg-dr-surface-light p-3'>
+              <p className='text-sm text-dr-text'>
+                {viewingNote?.note || "No note"}
+              </p>
+            </div>
+            <div className='flex justify-end'>
+              <Button secondary onClick={() => setViewingNote(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal
           open={showEditModal}

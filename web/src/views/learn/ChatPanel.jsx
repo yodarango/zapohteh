@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button, Select } from "@ds";
 import { API_GET_CHAT, API_POST_CHAT } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -9,6 +9,7 @@ export const ChatPanel = ({ topic, chapters }) => {
   const [chapter, setChapter] = useState("generic");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const messagesContainerRef = useRef(null);
 
   const authHeaders = () => ({
     Authorization: "Bearer " + localStorage.getItem("auth"),
@@ -34,6 +35,13 @@ export const ChatPanel = ({ topic, chapters }) => {
       cancelled = true;
     };
   }, [topic]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages]);
 
   const send = async () => {
     if (!input.trim() || loading) return;
@@ -85,25 +93,30 @@ export const ChatPanel = ({ topic, chapters }) => {
         Assistant
       </h3>
 
-      <div className='mb-3 max-h-48 overflow-y-auto'>
-        {messages.map((msg, idx) => (
-          <div
-            key={msg.id || idx}
-            className={`mb-2 rounded-xl px-3 py-2 text-sm ${
-              msg.role === "user"
-                ? "bg-dr-accent-light text-dr-accent"
-                : "bg-dr-surface-light text-dr-text"
-            }`}
-          >
-            <p className='text-xs font-medium opacity-75'>
-              {msg.role === "user" ? "You" : "AI"}
-              {msg.chapter && msg.chapter !== "generic" && (
-                <span className='ml-1'>· {msg.chapter}</span>
-              )}
-            </p>
-            <p className='mt-0.5 whitespace-pre-wrap'>{msg.content}</p>
-          </div>
-        ))}
+      <div
+        ref={messagesContainerRef}
+        className='mb-3 max-h-48 overflow-y-auto'
+      >
+        {messages
+          .filter((msg) => (msg.chapter || "generic") === chapter)
+          .map((msg, idx) => (
+            <div
+              key={msg.id || idx}
+              className={`mb-2 rounded-xl px-3 py-2 text-sm ${
+                msg.role === "user"
+                  ? "bg-dr-accent-light text-dr-accent"
+                  : "bg-dr-surface-light text-dr-text"
+              }`}
+            >
+              <p className='text-xs font-medium opacity-75'>
+                {msg.role === "user" ? "You" : "AI"}
+                {msg.chapter && msg.chapter !== "generic" && (
+                  <span className='ml-1'>· {msg.chapter}</span>
+                )}
+              </p>
+              <p className='mt-0.5 whitespace-pre-wrap'>{msg.content}</p>
+            </div>
+          ))}
       </div>
 
       <div className='flex flex-col gap-2'>

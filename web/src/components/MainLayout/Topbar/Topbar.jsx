@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { API_GET_COURSES, ROUTE_LEARN } from "@constants";
 import { authHeaders } from "@utils";
+import { useAppContext } from "@views/context/appContextProvider";
 import zapohtehLogo from "../../../../public/logo.webp";
 
 export const Topbar = ({ onMenuToggle }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { openLearnMenu } = useAppContext();
   const containerRef = useRef(null);
   const timeoutRef = useRef(null);
+  const isLearnRoute = location.pathname.startsWith(ROUTE_LEARN);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -67,13 +71,25 @@ export const Topbar = ({ onMenuToggle }) => {
   return (
     <header className='flex items-center justify-between gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
       {/* Mobile hamburger */}
-      <button
-        type='button'
-        onClick={onMenuToggle}
-        className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light lg:hidden'
-      >
-        <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
-      </button>
+      <div className='flex items-center gap-2 lg:hidden'>
+        <button
+          type='button'
+          onClick={onMenuToggle}
+          className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light'
+        >
+          <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
+        </button>
+        {isLearnRoute && (
+          <button
+            type='button'
+            onClick={openLearnMenu}
+            className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light'
+            aria-label='Open course menu'
+          >
+            <ion-icon name='pencil-outline' className='text-2xl'></ion-icon>
+          </button>
+        )}
+      </div>
 
       {/* Desktop search + notifications */}
       <div className='hidden items-center gap-4 lg:flex'>
