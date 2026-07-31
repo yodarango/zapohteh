@@ -172,8 +172,42 @@ export const StickiesPanel = ({ topic, visible }) => {
 const StickyNote = ({ sticky, containerRef, onUpdate, onDelete }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [content, setContent] = useState(sticky.content || "");
+  const [status, setStatus] = useState("idle"); // idle | pending | saving | saved
   const noteRef = useRef(null);
   const startRef = useRef({ x: 0, y: 0 });
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setContent(sticky.content || "");
+  }, [sticky.content]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const onContentChange = (e) => {
+    const value = e.target.value;
+    setContent(value);
+    setStatus("pending");
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(async () => {
+      setStatus("saving");
+      await onUpdate(sticky.id, { content: value });
+      setStatus("saved");
+      debounceTimerRef.current = setTimeout(() => {
+        setStatus("idle");
+      }, 2000);
+    }, 5000);
+  };
 
   const onDragStart = (e) => {
     if (e.target.closest(".sticky-delete") || e.target.closest(".sticky-resize")) return;
@@ -256,7 +290,15 @@ const StickyNote = ({ sticky, containerRef, onUpdate, onDelete }) => {
       onTouchStart={onDragStart}
     >
       <div className='flex items-center justify-between border-b border-black/10 bg-black/5 px-2 py-1'>
-        <span className='text-xs font-semibold text-yellow-900'>Note</span>
+        <span className='flex items-center gap-1 text-xs font-semibold text-yellow-900'>
+          Note
+          {(status === "pending" || status === "saving") && (
+            <span className='ml-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-yellow-900/30 border-t-yellow-900' />
+          )}
+          {status === "saved" && (
+            <span className='ml-1 text-green-700'>✓</span>
+          )}
+        </span>
         <button
           type='button'
           onClick={() => onDelete(sticky.id)}
@@ -268,8 +310,8 @@ const StickyNote = ({ sticky, containerRef, onUpdate, onDelete }) => {
         </button>
       </div>
       <textarea
-        value={sticky.content}
-        onChange={(e) => onUpdate(sticky.id, { content: e.target.value })}
+        value={content}
+        onChange={onContentChange}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         placeholder='Write a note...'
