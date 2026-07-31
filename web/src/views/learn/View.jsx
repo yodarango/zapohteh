@@ -10,7 +10,6 @@ import {
   Input,
   Select,
   TextArea,
-  Portal,
 } from "@ds";
 import {
   API_GET_TOPIC,
@@ -36,6 +35,7 @@ import {
 } from "@constants";
 import { splitChapters } from "./splitChapters";
 import { ChatPanel } from "./ChatPanel";
+import { StickiesPanel } from "./StickiesPanel";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -82,7 +82,7 @@ export const LearnView = () => {
   const [userHighlights, setUserHighlights] = useState([]);
   const [isChaptersOpen, setIsChaptersOpen] = useState(true);
   const [showHighlightPopup, setShowHighlightPopup] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
+  const [showStickies, setShowStickies] = useState(false);
   const [pendingHighlight, setPendingHighlight] = useState(null);
   const [highlightNote, setHighlightNote] = useState("");
   const [editingHighlight, setEditingHighlight] = useState(null);
@@ -420,23 +420,15 @@ export const LearnView = () => {
   useEffect(() => {
     if (!showHighlightPopup) return;
 
-    const handleClickOutside = (e) => {
-      if (!e.target.closest("[data-highlight-popup]")) {
-        cancelPendingHighlight();
-      }
-    };
-
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         cancelPendingHighlight();
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [showHighlightPopup]);
@@ -730,17 +722,10 @@ export const LearnView = () => {
     if (!text) return;
 
     const chapter = getChapterFromSelection(selection);
-    const range = selection.rangeCount ? selection.getRangeAt(0) : null;
-    const rect = range ? range.getBoundingClientRect() : null;
 
     setPendingHighlight({ text, chapter, highlightId: null });
     setHighlightNote("");
     setEditingHighlight(null);
-    setPopupPosition(
-      rect
-        ? { top: rect.top - 8, left: rect.left + rect.width / 2 }
-        : { top: 0, left: 0 }
-    );
     setShowHighlightPopup(true);
   };
 
@@ -766,14 +751,9 @@ export const LearnView = () => {
       const highlightId = editBtn.getAttribute("data-highlight-id");
       const chapter = editBtn.getAttribute("data-highlight-chapter") || "";
       const note = editBtn.getAttribute("data-highlight-note") || "";
-      const rect = editBtn.getBoundingClientRect();
       setEditingHighlight({ text, highlightId: Number(highlightId), chapter, note });
       setPendingHighlight({ text, highlightId: Number(highlightId), chapter, note });
       setHighlightNote(note);
-      setPopupPosition({
-        top: rect.top - 8,
-        left: rect.left + rect.width / 2,
-      });
       setShowHighlightPopup(true);
       return;
     }
@@ -933,22 +913,28 @@ export const LearnView = () => {
       </div>
 
       {showHighlightPopup && (
-        <Portal>
+        <div className='fixed inset-0 z-30 flex items-center justify-center'>
           <div
-            data-highlight-popup
-            className='fixed z-50 w-[96vw] max-w-[600px] rounded-2xl border border-dr-border bg-dr-surface p-3 shadow-lg'
-            style={{
-              top: popupPosition.top,
-              left: popupPosition.left,
-              transform: "translate(-50%, -100%)",
-            }}
-          >
-            <div className='flex flex-col gap-3'>
-              <p className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+            className='absolute inset-0 bg-dr-accent/40'
+            onClick={cancelPendingHighlight}
+          />
+          <div className='relative z-10 w-[90vw] max-w-[60rem] overflow-hidden rounded-2xl bg-dr-surface p-6 shadow-lg'>
+            <div className='mb-6 flex items-center justify-between px-4'>
+              <h4 className='text-xl font-bold'>
                 {editingHighlight ? "Edit highlight" : "Highlight"}
-              </p>
+              </h4>
+              <button
+                type='button'
+                onClick={cancelPendingHighlight}
+                className='border-none bg-transparent text-2xl text-dr-text'
+                aria-label='Close'
+              >
+                ×
+              </button>
+            </div>
+            <div className='mx-auto flex max-w-md flex-col gap-3'>
               {userHighlights.length === 0 ? (
-                <p className='max-w-[200px] text-xs text-dr-text-muted'>
+                <p className='text-xs text-dr-text-muted'>
                   No highlights yet. Create them in the Highlights page.
                 </p>
               ) : (
@@ -988,10 +974,7 @@ export const LearnView = () => {
                           aria-label={highlight.label}
                         >
                           {selected && (
-                            <ion-icon
-                              name='checkmark-outline'
-                              className='text-xs text-white'
-                            />
+                            <span className='text-xs text-white'>✓</span>
                           )}
                         </button>
                       );
@@ -1027,7 +1010,7 @@ export const LearnView = () => {
               </div>
             </div>
           </div>
-        </Portal>
+        </div>
       )}
 
       <div
@@ -1064,6 +1047,14 @@ export const LearnView = () => {
             <Button secondary className='w-full' onClick={narrate}>
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
+            </Button>
+            <Button
+              secondary
+              className={`w-full ${showStickies ? "bg-dr-accent/10 text-dr-accent" : ""}`}
+              onClick={() => setShowStickies((prev) => !prev)}
+            >
+              <ion-icon name='document-text-outline'></ion-icon>
+              <span className='ml-2'>{showStickies ? "Hide stickies" : "Show stickies"}</span>
             </Button>
             <Button
               danger
@@ -1315,6 +1306,8 @@ export const LearnView = () => {
           </div>
         </Modal>
       </div>
+
+      <StickiesPanel topic={topic} visible={showStickies} />
     </div>
   );
 };
