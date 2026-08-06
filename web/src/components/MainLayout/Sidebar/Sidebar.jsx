@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useParams } from "react-router-dom";
 import {
   ROUTE_CREATE,
   ROUTE_HOME,
@@ -7,6 +7,7 @@ import {
   ROUTE_USERS_ME,
 } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
+import { NotesPanel } from "@views/learn/NotesPanel";
 import { avatars } from "@images";
 import zapohtehLogo from "../../../../public/logo.webp";
 
@@ -60,6 +61,8 @@ const SectionLabel = ({ children }) => (
 
 export const Sidebar = ({ onClose, className = "" }) => {
   const navigate = useNavigate();
+  const { topic } = useParams();
+  const isLearnPage = !!topic;
   const { state, logout } = useAppContext();
   const user = state?.user || {};
   const name =
@@ -68,7 +71,7 @@ export const Sidebar = ({ onClose, className = "" }) => {
 
   return (
     <aside
-      className={`flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-3xl border border-dr-border bg-dr-surface shadow-sm ${className}`}
+      className={`flex h-full w-full shrink-0 flex-col overflow-hidden ${isLearnPage ? "" : "rounded-3xl border border-dr-border bg-dr-surface shadow-sm"} ${className}`}
     >
       {/* Mobile close button */}
       {onClose && (
@@ -83,67 +86,75 @@ export const Sidebar = ({ onClose, className = "" }) => {
         </div>
       )}
 
-      {/* Brand */}
-      <div className='flex items-center gap-2 px-5 py-5'>
-        <img
-          src={zapohtehLogo}
-          alt='Logo'
-          className='h-8 w-8 rounded-lg object-contain'
-        />
-        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
-      </div>
-
-      {/* Navigation */}
-      <nav className='flex-1 overflow-y-auto px-3'>
-        <SectionLabel>General</SectionLabel>
-        <div className='flex flex-col gap-1'>
-          {GENERAL.map((item) => (
-            <NavItem key={item.label} item={item} onClick={onClose} />
-          ))}
+      {isLearnPage ? (
+        <div className='flex-1 overflow-y-auto pt-5'>
+          <NotesPanel topic={topic} />
         </div>
-      </nav>
-
-      {/* Footer: settings + profile */}
-      <div className='border-t border-dr-border px-3 py-3'>
-        <NavItem item={{ label: "Settings", icon: "settings-outline" }} />
-        <button
-          type='button'
-          onClick={() => {
-            if (onClose) onClose();
-            navigate(ROUTE_USERS_ME);
-          }}
-          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-dr-surface-light'
-        >
-          <div className='flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-sm font-semibold text-dr-accent'>
-            {chosenAvatar.image ? (
-              <img
-                src={chosenAvatar.image}
-                alt={name}
-                className='h-full w-full object-cover'
-              />
-            ) : (
-              name.charAt(0).toUpperCase()
-            )}
+      ) : (
+        <>
+          {/* Brand */}
+          <div className='flex items-center gap-2 px-5 py-5'>
+            <img
+              src={zapohtehLogo}
+              alt='Logo'
+              className='h-8 w-8 rounded-lg object-contain'
+            />
+            <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
           </div>
-          <div className='min-w-0'>
-            <p className='truncate text-sm font-semibold text-dr-text'>
-              {name}
-            </p>
-            <p className='truncate text-xs text-dr-text-muted'>
-              {user.username || "Not signed in"}
-            </p>
-          </div>
-        </button>
 
-        <button
-          type='button'
-          onClick={logout}
-          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-dr-danger transition-colors hover:bg-dr-danger/10'
-        >
-          <ion-icon name='log-out-outline' class='text-base'></ion-icon>
-          Log out
-        </button>
-      </div>
+          <nav className='flex-1 overflow-y-auto px-3'>
+            <SectionLabel>General</SectionLabel>
+            <div className='flex flex-col gap-1'>
+              {GENERAL.map((item) => (
+                <NavItem key={item.label} item={item} onClick={onClose} />
+              ))}
+            </div>
+          </nav>
+        </>
+      )}
+
+      {!isLearnPage && (
+        <div className='border-t border-dr-border px-3 py-3'>
+          <NavItem item={{ label: "Settings", icon: "settings-outline" }} />
+          <button
+            type='button'
+            onClick={() => {
+              if (onClose) onClose();
+              navigate(ROUTE_USERS_ME);
+            }}
+            className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-dr-surface-light'
+          >
+            <div className='flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-sm font-semibold text-dr-accent'>
+              {chosenAvatar.image ? (
+                <img
+                  src={chosenAvatar.image}
+                  alt={name}
+                  className='h-full w-full object-cover'
+                />
+              ) : (
+                name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className='min-w-0'>
+              <p className='truncate text-sm font-semibold text-dr-text'>
+                {name}
+              </p>
+              <p className='truncate text-xs text-dr-text-muted'>
+                {user.username || "Not signed in"}
+              </p>
+            </div>
+          </button>
+
+          <button
+            type='button'
+            onClick={logout}
+            className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-dr-danger transition-colors hover:bg-dr-danger/10'
+          >
+            <ion-icon name='log-out-outline' class='text-base'></ion-icon>
+            Log out
+          </button>
+        </div>
+      )}
     </aside>
   );
 };

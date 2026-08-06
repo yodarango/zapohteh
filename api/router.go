@@ -64,10 +64,10 @@ func Router () http.Handler {
 	// lesson chat routes (GET and POST share the same path)
 	mux.HandleFunc(constants.ROUTE_GET_CHAT, models.Authenticate(ChatHandler))
 
-	// stickies
-	mux.HandleFunc(constants.ROUTE_GET_STICKIES, models.Authenticate(StickiesHandler))
-	mux.HandleFunc(constants.ROUTE_PUT_STICKIES, models.Authenticate(UpdateStickyHandler))
-	mux.HandleFunc(constants.ROUTE_DELETE_STICKIES, models.Authenticate(DeleteStickyHandler))
+	// notes
+	mux.HandleFunc(constants.ROUTE_GET_NOTES, models.Authenticate(NotesHandler))
+	mux.HandleFunc(constants.ROUTE_PUT_NOTES, models.Authenticate(UpdateNoteHandler))
+	mux.HandleFunc(constants.ROUTE_DELETE_NOTES, models.Authenticate(DeleteNoteHandler))
 
 
 	// Serve static files from the frontend build
@@ -1889,23 +1889,23 @@ func CreateChatMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Dispatches stickies requests to the correct method handler.
+* Dispatches notes requests to the correct method handler.
 ************************************************************************/
-func StickiesHandler(w http.ResponseWriter, r *http.Request) {
+func NotesHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		GetStickies(w, r)
+		GetNotes(w, r)
 	case http.MethodPost:
-		CreateSticky(w, r)
+		CreateNote(w, r)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 /************************************************************************
-* Returns all sticky notes for a course.
+* Returns all notes for a course.
 ************************************************************************/
-func GetStickies(w http.ResponseWriter, r *http.Request) {
+func GetNotes(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
 	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
@@ -1926,7 +1926,7 @@ func GetStickies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stickies, err := models.GetStickiesByCourse(authUser.Id, course)
+	notes, err := models.GetNotesByCourse(authUser.Id, course)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -1935,16 +1935,16 @@ func GetStickies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpResponse.Data = stickies
+	httpResponse.Data = notes
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
 
 /************************************************************************
-* Creates a new sticky note for a course.
+* Creates a new note for a course.
 ************************************************************************/
-func CreateSticky(w http.ResponseWriter, r *http.Request) {
+func CreateNote(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
 	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
@@ -1965,8 +1965,8 @@ func CreateSticky(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var sticky models.Sticky
-	if err := json.NewDecoder(r.Body).Decode(&sticky); err != nil {
+	var note models.Note
+	if err := json.NewDecoder(r.Body).Decode(&note); err != nil {
 		httpResponse.Error = "Invalid request data"
 		httpResponse.Success = false
 		httpResponse.Data = nil
@@ -1974,7 +1974,7 @@ func CreateSticky(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := models.CreateSticky(authUser.Id, course, sticky)
+	id, err := models.CreateNote(authUser.Id, course, note)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -1983,17 +1983,17 @@ func CreateSticky(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sticky.ID = id
-	httpResponse.Data = sticky
+	note.ID = id
+	httpResponse.Data = note
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
 
 /************************************************************************
-* Updates an existing sticky note.
+* Updates an existing note.
 ************************************************************************/
-func UpdateStickyHandler(w http.ResponseWriter, r *http.Request) {
+func UpdateNoteHandler(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
 	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
@@ -2005,17 +2005,17 @@ func UpdateStickyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stickyID, err := strconv.Atoi(r.PathValue("id"))
+	noteID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		httpResponse.Error = "invalid sticky id"
+		httpResponse.Error = "invalid note id"
 		httpResponse.Success = false
 		httpResponse.Data = nil
 		httpResponse.Send(w)
 		return
 	}
 
-	var sticky models.Sticky
-	if err := json.NewDecoder(r.Body).Decode(&sticky); err != nil {
+	var note models.Note
+	if err := json.NewDecoder(r.Body).Decode(&note); err != nil {
 		httpResponse.Error = "Invalid request data"
 		httpResponse.Success = false
 		httpResponse.Data = nil
@@ -2023,7 +2023,7 @@ func UpdateStickyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := models.UpdateSticky(authUser.Id, stickyID, sticky); err != nil {
+	if err := models.UpdateNote(authUser.Id, noteID, note); err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
 		httpResponse.Data = nil
@@ -2031,16 +2031,16 @@ func UpdateStickyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpResponse.Data = sticky
+	httpResponse.Data = note
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
 
 /************************************************************************
-* Deletes a sticky note.
+* Deletes a note.
 ************************************************************************/
-func DeleteStickyHandler(w http.ResponseWriter, r *http.Request) {
+func DeleteNoteHandler(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
 	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
@@ -2052,16 +2052,16 @@ func DeleteStickyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stickyID, err := strconv.Atoi(r.PathValue("id"))
+	noteID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		httpResponse.Error = "invalid sticky id"
+		httpResponse.Error = "invalid note id"
 		httpResponse.Success = false
 		httpResponse.Data = nil
 		httpResponse.Send(w)
 		return
 	}
 
-	if err := models.DeleteSticky(authUser.Id, stickyID); err != nil {
+	if err := models.DeleteNote(authUser.Id, noteID); err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
 		httpResponse.Data = nil
@@ -2069,7 +2069,7 @@ func DeleteStickyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpResponse.Data = map[string]string{"message": "Sticky deleted"}
+	httpResponse.Data = map[string]string{"message": "Note deleted"}
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)

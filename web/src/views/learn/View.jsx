@@ -35,7 +35,6 @@ import {
 } from "@constants";
 import { splitChapters } from "./splitChapters";
 import { ChatPanel } from "./ChatPanel";
-import { StickiesPanel } from "./StickiesPanel";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -70,6 +69,7 @@ export const LearnView = () => {
   const [courseSubjectIds, setCourseSubjectIds] = useState(new Set());
   const [coverImageLoading, setCoverImageLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isChaptersOpen, setIsChaptersOpen] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -80,9 +80,7 @@ export const LearnView = () => {
   const [selectedCoverImage, setSelectedCoverImage] = useState("");
   const [highlights, setHighlights] = useState([]);
   const [userHighlights, setUserHighlights] = useState([]);
-  const [isChaptersOpen, setIsChaptersOpen] = useState(true);
   const [showHighlightPopup, setShowHighlightPopup] = useState(false);
-  const [showStickies, setShowStickies] = useState(false);
   const [pendingHighlight, setPendingHighlight] = useState(null);
   const [highlightNote, setHighlightNote] = useState("");
   const [editingHighlight, setEditingHighlight] = useState(null);
@@ -525,6 +523,12 @@ export const LearnView = () => {
             .research-content code { background: rgba(15,23,42,0.06); padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
             .research-content blockquote { border-left: 3px solid rgba(15,23,42,0.15); padding-left: 1rem; margin: 0.75rem 0; opacity: 0.85; }
             .research-content img { display: block; max-width: 100%; height: auto; border-radius: 0.75rem; margin: 1rem 0; }
+            .research-content pre { background: rgba(15,23,42,0.06); padding: 0.75rem 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.75rem 0; }
+            .research-content pre code { background: transparent; padding: 0; }
+            .research-content table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+            .research-content th, .research-content td { border: 1px solid rgba(15,23,42,0.15); padding: 0.4rem 0.75rem; text-align: left; }
+            .research-content th { background: rgba(15,23,42,0.05); font-weight: 600; }
+            .research-content hr { border: none; border-top: 1px solid rgba(15,23,42,0.15); margin: 1rem 0; }
           </style>
         </head>
         <body>
@@ -566,8 +570,6 @@ export const LearnView = () => {
     form.append("voice", "echo");
     form.append("text", text);
 
-    // no-cors strips custom headers, so send the key via query parameter as
-    // documented in the Tanjreen API.
     const url = `${TANJREEN_API_URL}?apiKey=${encodeURIComponent(TANJREEN_API_KEY)}`;
 
     fetch(url, {
@@ -1036,7 +1038,7 @@ export const LearnView = () => {
           <ChatPanel topic={topic} chapters={chapters} />
         </div>
         <div className='order-3 md:order-4 mb-4'>
-          <h3 className='mb- text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+          <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
             Actions
           </h3>
           <div className='flex flex-col gap-2'>
@@ -1047,14 +1049,6 @@ export const LearnView = () => {
             <Button secondary className='w-full' onClick={narrate}>
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
-            </Button>
-            <Button
-              secondary
-              className={`w-full ${showStickies ? "bg-dr-accent/10 text-dr-accent" : ""}`}
-              onClick={() => setShowStickies((prev) => !prev)}
-            >
-              <ion-icon name='document-text-outline'></ion-icon>
-              <span className='ml-2'>{showStickies ? "Hide stickies" : "Show stickies"}</span>
             </Button>
             <Button
               danger
@@ -1306,8 +1300,6 @@ export const LearnView = () => {
           </div>
         </Modal>
       </div>
-
-      <StickiesPanel topic={topic} visible={showStickies} />
     </div>
   );
 };

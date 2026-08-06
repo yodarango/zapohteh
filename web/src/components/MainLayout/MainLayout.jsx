@@ -10,7 +10,7 @@ export const MainLayout = () => {
     <div className='min-h-screen bg-dr-bg p-3 lg:p-6'>
       <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[100rem] gap-3 lg:gap-4 lg:min-h-[calc(100vh-3rem)]'>
         {/* Desktop sidebar */}
-        <div className='sticky top-3 z-20 hidden h-[80vh] w-60 shrink-0 self-start lg:top-6 lg:block'>
+        <div className='sticky top-3 z-20 hidden h-[90vh] w-[350px] shrink-0 self-start lg:top-6 lg:block'>
           <Sidebar />
         </div>
 

@@ -6,10 +6,15 @@ import { useAppContext } from "@views/context/appContextProvider";
 export const ChatPanel = ({ topic, chapters }) => {
   const { showToast } = useAppContext();
   const [messages, setMessages] = useState([]);
-  const [chapter, setChapter] = useState("generic");
+  const [chapterIndex, setChapterIndex] = useState("generic");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesContainerRef = useRef(null);
+
+  const chapterTitle =
+    chapterIndex === "generic"
+      ? "generic"
+      : chapters[Number(chapterIndex)]?.title || "generic";
 
   const authHeaders = () => ({
     Authorization: "Bearer " + localStorage.getItem("auth"),
@@ -56,7 +61,7 @@ export const ChatPanel = ({ topic, chapters }) => {
         },
         body: JSON.stringify({
           course: topic,
-          chapter,
+          chapter: chapterTitle,
           content: trimmed,
         }),
       });
@@ -70,7 +75,7 @@ export const ChatPanel = ({ topic, chapters }) => {
       }
       const userMsg = {
         role: "user",
-        chapter,
+        chapter: chapterTitle,
         content: trimmed,
         id: Date.now(),
       };
@@ -98,7 +103,7 @@ export const ChatPanel = ({ topic, chapters }) => {
         className='mb-3 max-h-48 overflow-y-auto'
       >
         {messages
-          .filter((msg) => (msg.chapter || "generic") === chapter)
+          .filter((msg) => (msg.chapter || "generic") === chapterTitle)
           .map((msg, idx) => (
             <div
               key={msg.id || idx}
@@ -123,12 +128,15 @@ export const ChatPanel = ({ topic, chapters }) => {
         <div className='mb-3'>
           <Select
             label=''
-            value={chapter}
-            onChange={(val) => setChapter(val)}
+            value={chapterIndex}
+            onChange={(val) => setChapterIndex(val)}
             placeholder='Select a chapter'
             options={[
               { value: "generic", label: "Generic" },
-              ...chapters.map((c) => ({ value: c.title, label: c.title })),
+              ...chapters.map((c, idx) => ({
+                value: String(idx),
+                label: `${idx + 1}. ${c.title}`,
+              })),
             ]}
           />
         </div>

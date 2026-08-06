@@ -43,11 +43,11 @@ const ROUTE_POST_COURSE_SUBJECTS = ROUTE_API_BASE + "/course-subjects"
 const ROUTE_GET_CHAT = ROUTE_API_BASE + "/chat"
 const ROUTE_POST_CHAT = ROUTE_API_BASE + "/chat"
 
-// stickies
-const ROUTE_GET_STICKIES = ROUTE_API_BASE + "/stickies"
-const ROUTE_POST_STICKIES = ROUTE_API_BASE + "/stickies"
-const ROUTE_PUT_STICKIES = "PUT " + ROUTE_API_BASE + "/stickies/{id}"
-const ROUTE_DELETE_STICKIES = "DELETE " + ROUTE_API_BASE + "/stickies/{id}"
+// notes
+const ROUTE_GET_NOTES = ROUTE_API_BASE + "/notes"
+const ROUTE_POST_NOTES = ROUTE_API_BASE + "/notes"
+const ROUTE_PUT_NOTES = "PUT " + ROUTE_API_BASE + "/notes/{id}"
+const ROUTE_DELETE_NOTES = "DELETE " + ROUTE_API_BASE + "/notes/{id}"
 
 // static files for generated research data (images, etc.)
 const ROUTE_DATA_FILES = "/data/"
