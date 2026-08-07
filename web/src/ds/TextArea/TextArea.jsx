@@ -11,6 +11,8 @@ export const TextArea = ({
   onPressEnter,
   minRows = 1,
   maxRows,
+  minHeight,
+  maxHeight,
   maxCharacters,
   showCharacterCount = false,
   ...rest
@@ -23,6 +25,19 @@ export const TextArea = ({
 
     // Reset height to auto to get the correct scrollHeight
     textArea.style.height = "auto";
+
+    // Pixel-based sizing: grow with content between minHeight and maxHeight,
+    // then scroll inside the textarea once maxHeight is reached.
+    if (minHeight != null || maxHeight != null) {
+      const scrollHeight = textArea.scrollHeight;
+      let newHeight = scrollHeight;
+      if (minHeight != null) newHeight = Math.max(newHeight, minHeight);
+      if (maxHeight != null) newHeight = Math.min(newHeight, maxHeight);
+      textArea.style.height = `${newHeight}px`;
+      textArea.style.overflowY =
+        maxHeight != null && scrollHeight > maxHeight ? "auto" : "hidden";
+      return;
+    }
 
     // Calculate the number of rows based on content
     const lineHeight = parseInt(window.getComputedStyle(textArea).lineHeight);

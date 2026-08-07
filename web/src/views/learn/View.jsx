@@ -712,6 +712,23 @@ export const LearnView = () => {
     return chapter?.title || "";
   };
 
+  const isSelectionInLesson = (selection) => {
+    if (!selection.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    const startEl =
+      range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement
+        : range.startContainer;
+    const endEl =
+      range.endContainer.nodeType === Node.TEXT_NODE
+        ? range.endContainer.parentElement
+        : range.endContainer;
+    return !!(
+      startEl?.closest(".research-content") &&
+      endEl?.closest(".research-content")
+    );
+  };
+
   const handleTextSelection = (e) => {
     const target =
       e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
@@ -722,6 +739,8 @@ export const LearnView = () => {
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (!text) return;
+
+    if (!isSelectionInLesson(selection)) return;
 
     const chapter = getChapterFromSelection(selection);
 
@@ -934,7 +953,7 @@ export const LearnView = () => {
                 ×
               </button>
             </div>
-            <div className='mx-auto flex max-w-md flex-col gap-3'>
+            <div className='flex w-full flex-col gap-3'>
               {userHighlights.length === 0 ? (
                 <p className='text-xs text-dr-text-muted'>
                   No highlights yet. Create them in the Highlights page.
@@ -986,10 +1005,10 @@ export const LearnView = () => {
                     value={highlightNote}
                     onChange={(e) => setHighlightNote(e.target.value)}
                     placeholder='Add a note (optional)...'
-                    minRows={2}
-                    maxRows={4}
+                    minHeight={150}
+                    maxHeight={400}
                     autoFocus={!editingHighlight}
-                    className='w-full text-sm'
+                    className='w-full overscroll-contain text-sm'
                   />
                 </>
               )}
