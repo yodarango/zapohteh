@@ -46,15 +46,6 @@ export function initSounds() {
     if (isInteractive(e.target)) play("release", { volume: 0.5 });
   });
 
-  // Hover tick on interactive elements (pointerenter doesn't bubble).
-  document.addEventListener(
-    "pointerenter",
-    (e) => {
-      if (isInteractive(e.target)) play("tick", { volume: 0.25 });
-    },
-    true,
-  );
-
   // Typing sound on text inputs / textareas.
   document.addEventListener("keydown", (e) => {
     if (!isTextInput(e.target)) return;
