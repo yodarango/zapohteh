@@ -8,6 +8,7 @@ import {
 import { marked } from 'marked';
 import { authHeaders } from '@utils';
 import { useAppContext } from '@views/context/appContextProvider';
+import { SidebarNav } from '@components/MainLayout/Sidebar/Sidebar';
 import zapohtehLogo from '../../../public/logo.webp';
 
 const DEBOUNCE_MS = 3000;
@@ -16,6 +17,7 @@ export const NotesPanel = ({ topic }) => {
   const { showToast } = useAppContext();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +132,27 @@ export const NotesPanel = ({ topic }) => {
           className='h-8 w-8 rounded-lg object-contain'
         />
         <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+        <button
+          type='button'
+          onClick={() => setNavOpen(true)}
+          className='ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-dr-text transition-colors hover:bg-dr-surface-light'
+          aria-label='Open menu'
+        >
+          <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
+        </button>
       </div>
+
+      {navOpen && (
+        <>
+          <div
+            className='fixed inset-0 z-30 bg-dr-accent/40'
+            onClick={() => setNavOpen(false)}
+          />
+          <div className='fixed left-0 top-0 z-40 flex h-full w-72 flex-col overflow-hidden rounded-none border-y-0 border-l-0 border-r border-dr-border bg-dr-surface shadow-lg'>
+            <SidebarNav onClose={() => setNavOpen(false)} showCloseButton />
+          </div>
+        </>
+      )}
 
       <button
         type='button'

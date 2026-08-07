@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { If } from "@ds";
+import { playToastSound } from "@utils";
 
 const typeStyles = {
   success: "border-[#16c098] bg-[#ecf8f4] text-[#16c098]",
@@ -11,7 +12,31 @@ const typeStyles = {
 };
 
 export const Toast = (props) => {
-  const { icon, onClose, children, title, type, style, open = false } = props;
+  const {
+    icon,
+    onClose,
+    children,
+    title,
+    type,
+    style,
+    open = false,
+    duration = 3000,
+  } = props;
+
+  // Play the type-specific feedback sound when the toast appears.
+  useEffect(() => {
+    if (open) playToastSound(type);
+  }, [open, type]);
+
+  // Auto-close after `duration` ms (default 3s) when open.
+  // Pass duration={0} or a falsy value to disable auto-close.
+  useEffect(() => {
+    if (!open || !duration) return;
+    const timer = setTimeout(() => {
+      if (onClose) onClose();
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [open, duration, onClose]);
 
   const cardClass = typeStyles[type] || typeStyles.default;
   const closeClass = !!onClose ? "py-3 ps-3 pe-1" : "p-3";
