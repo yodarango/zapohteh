@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -55,6 +55,10 @@ export const LearnView = () => {
   const { topic } = useParams();
   const navigate = useNavigate();
   const { showToast, state, closeLearnMenu } = useAppContext();
+
+  // tracks whether the "x" key is currently held down, so the user can
+  // press x while selecting text to copy it without opening the note modal
+  const xKeyHeld = useRef(false);
 
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
@@ -191,6 +195,29 @@ export const LearnView = () => {
 
     return body.innerHTML;
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "x" || e.key === "X") xKeyHeld.current = true;
+    };
+    const handleKeyUp = (e) => {
+      if (e.key === "x" || e.key === "X") xKeyHeld.current = false;
+    };
+    // reset if the window loses focus so the state can't get stuck
+    const handleBlur = () => {
+      xKeyHeld.current = false;
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -400,7 +427,11 @@ export const LearnView = () => {
 
     saveHighlights(
       newHighlights,
-      editingHighlight ? "Highlight updated" : withNote ? "Highlight and note saved" : "Highlight saved",
+      editingHighlight
+        ? "Highlight updated"
+        : withNote
+          ? "Highlight and note saved"
+          : "Highlight saved",
     );
     setShowHighlightPopup(false);
     setEditingHighlight(null);
@@ -730,6 +761,9 @@ export const LearnView = () => {
   };
 
   const handleTextSelection = (e) => {
+    // hold x while selecting to copy text without opening the note modal
+    if (xKeyHeld.current) return;
+
     const target =
       e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
     if (target.closest(".highlight-delete")) return;
@@ -772,8 +806,18 @@ export const LearnView = () => {
       const highlightId = editBtn.getAttribute("data-highlight-id");
       const chapter = editBtn.getAttribute("data-highlight-chapter") || "";
       const note = editBtn.getAttribute("data-highlight-note") || "";
-      setEditingHighlight({ text, highlightId: Number(highlightId), chapter, note });
-      setPendingHighlight({ text, highlightId: Number(highlightId), chapter, note });
+      setEditingHighlight({
+        text,
+        highlightId: Number(highlightId),
+        chapter,
+        note,
+      });
+      setPendingHighlight({
+        text,
+        highlightId: Number(highlightId),
+        chapter,
+        note,
+      });
       setHighlightNote(note);
       setShowHighlightPopup(true);
       return;
@@ -1053,13 +1097,10 @@ export const LearnView = () => {
             </button>
           </div>
         )}
-        <div className='order-1 md:order-3'>
+        <div className='order-1 md:order-3 mb-2'>
           <ChatPanel topic={topic} chapters={chapters} />
         </div>
         <div className='order-3 md:order-4 mb-4'>
-          <h3 className='mb-2 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-            Actions
-          </h3>
           <div className='flex flex-col gap-2'>
             <Button secondary className='w-full' onClick={downloadPDF}>
               <ion-icon name='download-outline'></ion-icon>
