@@ -45,7 +45,7 @@ func getOpenAIImageModel() string {
 	if model := os.Getenv("OPENAI_IMAGE_MODEL"); model != "" {
 		return model
 	}
-	return "dall-e-3"
+	return "gpt-image-1"
 }
 
 type OpenAIService struct {
