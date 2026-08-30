@@ -42,6 +42,9 @@ export DOCKER_BUILDKIT=1; \
 export COMPOSE_DOCKER_CLI_BUILD=1; \
 docker compose build --parallel; \
 docker compose up -d; \
+echo '🧹 Cleaning old docker build cache and dangling images...'; \
+docker image prune -f; \
+docker builder prune -f --filter until=24h; \
 echo '🚀🚀🚀 Deployment successful'"
 
 
