@@ -34,7 +34,7 @@ import {
   TANJREEN_API_KEY,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
-import { ChatPanel } from "./ChatPanel";
+import { ChatWidget } from "./ChatWidget";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -1097,9 +1097,6 @@ export const LearnView = () => {
             </button>
           </div>
         )}
-        <div className='order-1 md:order-3 mb-2'>
-          <ChatPanel topic={topic} chapters={chapters} />
-        </div>
         <div className='order-3 md:order-4 mb-4'>
           <div className='flex flex-col gap-2'>
             <Button secondary className='w-full' onClick={downloadPDF}>
@@ -1360,6 +1357,8 @@ export const LearnView = () => {
           </div>
         </Modal>
       </div>
+
+      <ChatWidget topic={topic} chapters={chapters} />
     </div>
   );
 };

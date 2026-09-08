@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { marked } from "marked";
 import { Button, Select } from "@ds";
 import { API_GET_CHAT, API_POST_CHAT } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -93,14 +94,10 @@ export const ChatPanel = ({ topic, chapters }) => {
   };
 
   return (
-    <div>
-      <h3 className='mb-3 text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-        Assistant
-      </h3>
-
+    <div className='flex h-full flex-col'>
       <div
         ref={messagesContainerRef}
-        className='mb-3 max-h-48 overflow-y-auto'
+        className='mb-3 min-h-0 flex-1 overflow-y-auto'
       >
         {messages
           .filter((msg) => (msg.chapter || "generic") === chapterTitle)
@@ -119,7 +116,12 @@ export const ChatPanel = ({ topic, chapters }) => {
                   <span className='ml-1'>· {msg.chapter}</span>
                 )}
               </p>
-              <p className='mt-0.5 whitespace-pre-wrap'>{msg.content}</p>
+              <div
+                className='research-content mt-0.5 text-sm'
+                dangerouslySetInnerHTML={{
+                  __html: marked.parse(msg.content || "", { async: false }),
+                }}
+              />
             </div>
           ))}
       </div>

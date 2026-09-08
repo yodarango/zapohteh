@@ -13,11 +13,11 @@ import (
 	"unicode/utf8"
 )
 
-func getOpenAIChatURL() string {
-	if url := os.Getenv("OPENAI_CHAT_URL"); url != "" {
+func getOpenAIResponsesURL() string {
+	if url := os.Getenv("OPENAI_RESPONSES_URL"); url != "" {
 		return url
 	}
-	return "https://api.openai.com/v1/chat/completions"
+	return "https://api.openai.com/v1/responses"
 }
 
 func getOpenAIImageURL() string {
@@ -31,14 +31,7 @@ func getOpenAIModel() string {
 	if model := os.Getenv("OPENAI_MODEL"); model != "" {
 		return model
 	}
-	return "gpt-4o-mini"
-}
-
-func getOpenAIModelSearch() string {
-	if model := os.Getenv("OPENAI_MODEL_SEARCH"); model != "" {
-		return model
-	}
-	return "gpt-4o-mini-search-preview"
+	return "gpt-5.6-luna"
 }
 
 func getOpenAIImageModel() string {
@@ -53,26 +46,48 @@ type OpenAIService struct {
 	Model  string
 }
 
-type chatMessage struct {
+// responseInputMessage is a single message item in the Responses API `input`
+// array. Content is a plain string; multimodal messages use content parts (see
+// responseContentPart).
+type responseInputMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
 }
 
-// webSearchOptions enables the model's web search tool. An empty object is enough
-// to turn the feature on.
-type webSearchOptions struct{}
-
-type chatRequest struct {
-	Model            string            `json:"model"`
-	Messages         []chatMessage     `json:"messages"`
-	WebSearchOptions *webSearchOptions `json:"web_search_options,omitempty"`
+// responseContentPart is a text or image content part for a multimodal input
+// message in the Responses API.
+type responseContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
 }
 
-type chatResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
-	Error *struct {
+// responseTool enables a built-in tool such as web search. An empty object
+// (e.g. {"type":"web_search"}) is enough to turn the feature on.
+type responseTool struct {
+	Type string `json:"type"`
+}
+
+type responseRequest struct {
+	Model        string                 `json:"model"`
+	Input        []responseInputMessage `json:"input"`
+	Instructions string                 `json:"instructions,omitempty"`
+	Tools        []responseTool         `json:"tools,omitempty"`
+}
+
+type responseOutputContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type responseOutputItem struct {
+	Type    string                  `json:"type"`
+	Content []responseOutputContent `json:"content"`
+}
+
+type responseResult struct {
+	Output []responseOutputItem `json:"output"`
+	Error  *struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }
@@ -88,9 +103,9 @@ func NewOpenAIService() *OpenAIService {
 }
 
 /**************************************************************************************
-* Ask sends a system prompt and a user prompt to the OpenAI chat completions endpoint
-* and returns the text content of the first choice. The system prompt is optional and
-* is omitted when empty.
+* Ask sends a system prompt and a user prompt to the OpenAI Responses API
+* (v1/responses) and returns the model's text output. The system prompt is optional
+* and is omitted when empty.
 **************************************************************************************/
 func (s *OpenAIService) Ask(systemPrompt, userPrompt string) (string, error) {
 	return s.ask(s.Model, systemPrompt, userPrompt, false)
@@ -98,34 +113,29 @@ func (s *OpenAIService) Ask(systemPrompt, userPrompt string) (string, error) {
 
 /**************************************************************************************
 * AskWithWebSearch behaves like Ask but lets the model search the web before
-* answering. It uses the web-search enabled model and turns the web_search_options on.
+* answering. It uses the same model but adds the built-in web_search tool.
 **************************************************************************************/
 func (s *OpenAIService) AskWithWebSearch(systemPrompt, userPrompt string) (string, error) {
-	return s.ask(getOpenAIModelSearch(), systemPrompt, userPrompt, true)
+	return s.ask(s.Model, systemPrompt, userPrompt, true)
 }
 
 /**************************************************************************************
 * ask is the shared implementation behind Ask and AskWithWebSearch. It builds the
-* request for the given model, optionally enabling web search, and returns the text
-* content of the first choice. The system prompt is optional and is omitted when empty.
+* Responses API request, optionally enabling web search, and returns the model's text
+* output. The system prompt is optional and is passed as `instructions` when non-empty.
 **************************************************************************************/
 func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bool) (string, error) {
 	if s.APIKey == "" {
 		return "", fmt.Errorf("OpenAI API key is not configured")
 	}
 
-	messages := make([]chatMessage, 0, 2)
-	if systemPrompt != "" {
-		messages = append(messages, chatMessage{Role: "system", Content: systemPrompt})
-	}
-	messages = append(messages, chatMessage{Role: "user", Content: userPrompt})
-
-	reqBody := chatRequest{
-		Model:    model,
-		Messages: messages,
+	reqBody := responseRequest{
+		Model:        model,
+		Input:        []responseInputMessage{{Role: "user", Content: userPrompt}},
+		Instructions: systemPrompt,
 	}
 	if webSearch {
-		reqBody.WebSearchOptions = &webSearchOptions{}
+		reqBody.Tools = []responseTool{{Type: "web_search"}}
 	}
 
 	payload, err := json.Marshal(reqBody)
@@ -133,14 +143,14 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 		return "", fmt.Errorf("failed to marshal OpenAI request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, getOpenAIChatURL(), bytes.NewBuffer(payload))
+	req, err := http.NewRequest(http.MethodPost, getOpenAIResponsesURL(), bytes.NewBuffer(payload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create OpenAI request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send OpenAI request: %w", err)
@@ -152,28 +162,47 @@ func (s *OpenAIService) ask(model, systemPrompt, userPrompt string, webSearch bo
 		return "", fmt.Errorf("failed to read OpenAI response: %w", err)
 	}
 
-	var chatResp chatResponse
-	err = json.Unmarshal(body, &chatResp)
+	text, err := extractResponseText(body)
 	if err != nil {
+		return "", err
+	}
+	if text == "" {
+		return "", fmt.Errorf("OpenAI returned no text output")
+	}
+	return text, nil
+}
+
+/**************************************************************************************
+* extractResponseText parses a Responses API payload and returns the concatenated
+* text from every output_text content item. It surfaces API-level errors when present.
+**************************************************************************************/
+func extractResponseText(body []byte) (string, error) {
+	var res responseResult
+	if err := json.Unmarshal(body, &res); err != nil {
 		return "", fmt.Errorf("failed to unmarshal OpenAI response: %w", err)
 	}
-
-	if chatResp.Error != nil {
-		return "", fmt.Errorf("OpenAI error: %s", chatResp.Error.Message)
+	if res.Error != nil {
+		return "", fmt.Errorf("OpenAI error: %s", res.Error.Message)
 	}
-
-	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI returned no choices")
+	var b strings.Builder
+	for _, item := range res.Output {
+		if item.Type != "message" {
+			continue
+		}
+		for _, content := range item.Content {
+			if content.Type == "output_text" {
+				b.WriteString(content.Text)
+			}
+		}
 	}
-
-	return chatResp.Choices[0].Message.Content, nil
+	return strings.TrimSpace(b.String()), nil
 }
 
 type imageRequest struct {
-	Model       string `json:"model"`
-	Prompt      string `json:"prompt"`
-	Size        string `json:"size"`
-	N           int    `json:"n"`
+	Model        string `json:"model"`
+	Prompt       string `json:"prompt"`
+	Size         string `json:"size"`
+	N            int    `json:"n"`
 	OutputFormat string `json:"output_format"`
 }
 
@@ -396,27 +425,10 @@ func (s *OpenAIService) TTS(text, voice string) ([]byte, error) {
 	return body, nil
 }
 
-type visionContentPart struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	ImageURL *struct {
-		URL string `json:"url"`
-	} `json:"image_url,omitempty"`
-}
-
-type visionMessage struct {
-	Role    string              `json:"role"`
-	Content []visionContentPart `json:"content"`
-}
-
-type visionRequest struct {
-	Model    string          `json:"model"`
-	Messages []visionMessage `json:"messages"`
-}
-
 /**************************************************************************************
-* OCRImage sends an image to a vision-enabled OpenAI model and asks it to extract all
-* readable text. The returned string is the extracted text without commentary.
+* OCRImage sends an image to a vision-enabled OpenAI model via the Responses API and
+* asks it to extract all readable text. The returned string is the extracted text
+* without commentary.
 **************************************************************************************/
 func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, error) {
 	if s.APIKey == "" {
@@ -426,20 +438,14 @@ func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, err
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Image)
 
-	reqBody := visionRequest{
+	reqBody := responseRequest{
 		Model: getOpenAIModel(),
-		Messages: []visionMessage{
-			{
-				Role: "system",
-				Content: []visionContentPart{
-					{Type: "text", Text: "Extract all readable text from the image. Return only the extracted text, with no commentary."},
-				},
-			},
+		Input: []responseInputMessage{
 			{
 				Role: "user",
-				Content: []visionContentPart{
-					{Type: "text", Text: "Extract all text from this image."},
-					{Type: "image_url", ImageURL: &struct{ URL string `json:"url"` }{URL: dataURL}},
+				Content: []responseContentPart{
+					{Type: "input_text", Text: "Extract all readable text from this image. Return only the extracted text, with no commentary."},
+					{Type: "input_image", ImageURL: dataURL},
 				},
 			},
 		},
@@ -450,7 +456,7 @@ func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, err
 		return "", fmt.Errorf("failed to marshal OCR request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, getOpenAIChatURL(), bytes.NewBuffer(payload))
+	req, err := http.NewRequest(http.MethodPost, getOpenAIResponsesURL(), bytes.NewBuffer(payload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create OCR request: %w", err)
 	}
@@ -469,19 +475,12 @@ func (s *OpenAIService) OCRImage(imageData []byte, mimeType string) (string, err
 		return "", fmt.Errorf("failed to read OCR response: %w", err)
 	}
 
-	var chatResp chatResponse
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal OCR response: %w", err)
+	text, err := extractResponseText(body)
+	if err != nil {
+		return "", fmt.Errorf("OCR failed: %w", err)
 	}
-
-	if chatResp.Error != nil {
-		return "", fmt.Errorf("OpenAI OCR error: %s", chatResp.Error.Message)
+	if text == "" {
+		return "", fmt.Errorf("OpenAI OCR returned no text output")
 	}
-
-	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI OCR returned no choices")
-	}
-
-	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
+	return text, nil
 }
-
