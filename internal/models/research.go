@@ -33,6 +33,19 @@ type Research struct {
 	// UserID is the owner of the research content.
 	UserID uint `json:"userId"`
 
+	// SourceType selects the import pipeline: "web" for a URL import or "doc"
+	// for an uploaded document. Empty means a regular AI research.
+	SourceType string `json:"-"`
+	// SourceContent is the text extracted from the import source. Images found
+	// in the source are marked with [IMAGE_N] tokens on their own line.
+	SourceContent string `json:"-"`
+	// SourceImages holds the images extracted from the import source. Each
+	// Token matches an [IMAGE_N] marker in SourceContent.
+	SourceImages []SourceImage `json:"-"`
+	// SourceTitle is the title discovered during source extraction (e.g. the
+	// article title of a web page), used when the user did not provide one.
+	SourceTitle string `json:"-"`
+
 	// OnChapters is called once the chapter list has been generated.
 	OnChapters func([]string) `json:"-"`
 	// OnChapterDone is called every time a chapter has been described.
@@ -101,6 +114,7 @@ type Course struct {
 	Name           string     `json:"name"`
 	CoverImagePath string     `json:"coverImagePath"`
 	Language       string     `json:"language"`
+	Source         string     `json:"source"`
 	TotalChapters  int        `json:"totalChapters"`
 	ReadChapters   int        `json:"readChapters"`
 	Subjects       []Subject  `json:"subjects"`
@@ -147,9 +161,10 @@ func ListCourses(userId uint) ([]Course, error) {
 	createdAts := make(map[string]time.Time)
 	completedAts := make(map[string]*time.Time)
 	languages := make(map[string]string)
+	sources := make(map[string]string)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT title, cover_image_path, created_at, completed_at, language FROM courses WHERE user_id = ?",
+			"SELECT title, cover_image_path, created_at, completed_at, language, source FROM courses WHERE user_id = ?",
 			userId,
 		)
 		if err == nil {
@@ -160,7 +175,8 @@ func ListCourses(userId uint) ([]Course, error) {
 				var createdAt time.Time
 				var completedAt sql.NullTime
 				var language sql.NullString
-				if err := rows.Scan(&title, &path, &createdAt, &completedAt, &language); err == nil {
+				var source sql.NullString
+				if err := rows.Scan(&title, &path, &createdAt, &completedAt, &language, &source); err == nil {
 					key := utils.SanitizeFilename(title)
 					if path.Valid && path.String != "" {
 						coverPaths[key] = path.String
@@ -171,6 +187,9 @@ func ListCourses(userId uint) ([]Course, error) {
 					}
 					if language.Valid && language.String != "" {
 						languages[key] = language.String
+					}
+					if source.Valid && source.String != "" {
+						sources[key] = source.String
 					}
 				}
 			}
@@ -226,11 +245,16 @@ func ListCourses(userId uint) ([]Course, error) {
 		}
 		name := entry.Name()
 		total := countChapters(filepath.Join(userDir, name))
+		source := sources[name]
+		if source == "" {
+			source = CourseSourceAI
+		}
 		courses = append(courses, Course{
 			ID:             name,
 			Name:           utils.ToTitleCase(name),
 			CoverImagePath: coverPaths[name],
 			Language:       languages[name],
+			Source:         source,
 			TotalChapters:  total,
 			ReadChapters:   readCounts[name],
 			Subjects:       subjectMap[name],
@@ -248,6 +272,12 @@ func ListCourses(userId uint) ([]Course, error) {
 * writes them to disk and then elaborates each chapter one by one.
 **************************************************************************************/
 func (r *Research) Run() error {
+	// Imported lessons (from an uploaded document or a web URL) build their
+	// chapters from the extracted source content instead of a fresh AI research.
+	if r.SourceType == CourseSourceWeb || r.SourceType == CourseSourceDoc {
+		return r.runImport()
+	}
+
 	if strings.TrimSpace(r.Level) == "" {
 		r.Level = ResearchLevelMedium
 	}
@@ -374,6 +404,14 @@ func (r *Research) folderPath() string {
 	}
 	userDir := fmt.Sprintf("user_%d", r.UserID)
 	return filepath.Join(utils.ContentDir(), userDir, utils.SanitizeFilename(name))
+}
+
+/**************************************************************************************
+* imagesDir returns the path of the folder that holds the images for this topic.
+* Callers create it on demand with os.MkdirAll.
+**************************************************************************************/
+func (r *Research) imagesDir() string {
+	return filepath.Join(r.folderPath(), imagesDirName)
 }
 
 /**************************************************************************************

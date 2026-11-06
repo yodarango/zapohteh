@@ -7,23 +7,41 @@
 export async function streamPost(props) {
   const { url, body, onEvent, options = {} } = props;
 
+  // FormData bodies are sent as-is so the browser sets the multipart boundary;
+  // everything else goes out as JSON.
+  const isFormData = body instanceof FormData;
+
   const response = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
       Authorization: "Bearer " + localStorage.getItem("auth"),
     },
     method: "POST",
-    body: JSON.stringify(body),
+    body: isFormData ? body : JSON.stringify(body),
   });
 
   if (!response.ok || !response.body) {
     throw new Error(`HTTP error! Status: ${response.status}`);
   }
 
+  // A valid streaming endpoint answers with an event stream. Anything else —
+  // e.g. the SPA fallback's index.html from a backend that does not have this
+  // route yet — means the request never reached the handler; fail loudly
+  // instead of hanging forever with no events.
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    throw new Error(
+      "The server did not start a progress stream. Make sure the backend is running the latest version, then try again.",
+    );
+  }
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // becomes true once a terminal event (done/error) arrives; if the stream
+  // closes without one, the server went away mid-flight
+  let terminated = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -44,7 +62,16 @@ export async function streamPost(props) {
         else if (line.startsWith("data:")) data += line.slice(5).trim();
       }
 
-      if (data) onEvent(event, data);
+      if (data) {
+        if (event === "done" || event === "error") terminated = true;
+        onEvent(event, data);
+      }
     }
+  }
+
+  if (!terminated) {
+    throw new Error(
+      "The connection closed before the lesson finished. Please try again.",
+    );
   }
 }

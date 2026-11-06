@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button, Input, Loading, Switch, TextArea } from "@ds";
 import {
   API_POST_LEARN_ABOUT,
+  API_POST_LEARN_FROM_SOURCE,
   API_GET_SUBJECTS,
   ROUTE_LEARN,
 } from "@constants";
@@ -30,6 +31,21 @@ const STEPS = [
   { label: "Create Thumbnail", key: "thumbnail" },
 ];
 
+// Lesson creation modes: AI research, PDF document import or web article import
+const MODES = [
+  { value: "ai", label: "✨ AI" },
+  { value: "pdf", label: "📄 PDF" },
+  { value: "url", label: "🔗 URL" },
+];
+
+// Progress steps shown while importing a document or article; AI mode uses STEPS
+const IMPORT_STEPS = [
+  { label: "Extract Content", key: "extract" },
+  { label: "Craft Chapters", key: "chapters" },
+  { label: "Build Chapters", key: "research" },
+  { label: "Create Thumbnail", key: "thumbnail" },
+];
+
 export const IntroSection = () => {
   const navigate = useNavigate();
   const { showToast } = useAppContext();
@@ -46,7 +62,13 @@ export const IntroSection = () => {
   const [finished, setFinished] = useState(false);
   const [currentStep, setCurrentStep] = useState(null);
   const [thumbnailError, setThumbnailError] = useState(false);
+  // latest detail line reported by the extraction phase of an import
+  const [extractDetail, setExtractDetail] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState(new Set());
+  const [mode, setMode] = useState("ai");
+  const [url, setUrl] = useState("");
+  // the selected PDF file is intentionally not persisted to localStorage
+  const [pdfFile, setPdfFile] = useState(null);
 
   const FORM_STATE_KEY = "zapohteh-lesson-form";
 
@@ -62,6 +84,8 @@ export const IntroSection = () => {
       if (parsed.language) setLanguage(parsed.language);
       if (parsed.writingStyle) setWritingStyle(parsed.writingStyle);
       if (typeof parsed.searchWeb === "boolean") setSearchWeb(parsed.searchWeb);
+      if (parsed.mode) setMode(parsed.mode);
+      if (parsed.url) setUrl(parsed.url);
       if (parsed.selectedSubjects) {
         setSelectedSubjects(new Set(parsed.selectedSubjects));
       }
@@ -79,6 +103,8 @@ export const IntroSection = () => {
       language,
       writingStyle,
       searchWeb,
+      mode,
+      url,
       selectedSubjects: Array.from(selectedSubjects),
     };
     localStorage.setItem(FORM_STATE_KEY, JSON.stringify(state));
@@ -89,6 +115,8 @@ export const IntroSection = () => {
     language,
     writingStyle,
     searchWeb,
+    mode,
+    url,
     selectedSubjects,
   ]);
 
@@ -118,15 +146,31 @@ export const IntroSection = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !input.trim() || loading) {
+    if (loading) return;
+
+    if (mode === "ai" && (!title.trim() || !input.trim())) {
       showToast({
         type: "danger",
         message: "Please enter a title and a topic",
       });
       return;
     }
+    if (mode === "pdf" && !pdfFile) {
+      showToast({
+        type: "danger",
+        message: "Please choose a PDF file",
+      });
+      return;
+    }
+    if (mode === "url" && !url.trim()) {
+      showToast({
+        type: "danger",
+        message: "Please enter a URL",
+      });
+      return;
+    }
 
-    // reset progress state before starting a new research
+    // reset progress state before starting a new lesson
     setLoading(true);
     setChapters([]);
     setCompleted([]);
@@ -134,51 +178,82 @@ export const IntroSection = () => {
     setTopic("");
     setCurrentStep(0);
     setThumbnailError(false);
+    setExtractDetail("");
+
+    const isImport = mode !== "ai";
+    const handleEvent = (event, data) => {
+      const parsed = JSON.parse(data);
+      if (event === "extracting") {
+        if (parsed.phase === "done") setCurrentStep(1);
+        setExtractDetail(parsed.detail || parsed.phase);
+      } else if (event === "chapters") {
+        setChapters(parsed);
+        setCurrentStep(isImport ? 2 : 1);
+      } else if (event === "chapterDone") {
+        setCompleted((prev) => [...prev, parsed]);
+      } else if (event === "coverImage") {
+        setCurrentStep(isImport ? 3 : 2);
+        if (parsed.phase === "error") {
+          setThumbnailError(true);
+        }
+      } else if (event === "done") {
+        setTopic(parsed.topic);
+        setFinished(true);
+        setCurrentStep(isImport ? 4 : 3);
+        localStorage.removeItem(FORM_STATE_KEY);
+        showToast({
+          type: "success",
+          message: "Course created successfully",
+        });
+      } else if (event === "error") {
+        showToast({
+          type: "danger",
+          message:
+            typeof parsed === "string"
+              ? parsed
+              : parsed?.message || "Something went wrong",
+        });
+      }
+    };
 
     try {
-      await streamPost({
-        url: API_POST_LEARN_ABOUT,
-        body: {
-          title: title.trim(),
-          input: input.trim(),
-          level,
-          language,
-          writingStyle,
-          searchWeb,
-          subjectIds: Array.from(selectedSubjects),
-        },
-        onEvent: (event, data) => {
-          const parsed = JSON.parse(data);
-          if (event === "chapters") {
-            setChapters(parsed);
-            setCurrentStep(1);
-          } else if (event === "chapterDone") {
-            setCompleted((prev) => [...prev, parsed]);
-          } else if (event === "coverImage") {
-            setCurrentStep(2);
-            if (parsed.phase === "error") {
-              setThumbnailError(true);
-            }
-          } else if (event === "done") {
-            setTopic(parsed.topic);
-            setFinished(true);
-            setCurrentStep(3);
-            localStorage.removeItem(FORM_STATE_KEY);
-            showToast({
-              type: "success",
-              message: "Course created successfully",
-            });
-          } else if (event === "error") {
-            showToast({
-              type: "danger",
-              message:
-                typeof parsed === "string"
-                  ? parsed
-                  : parsed?.message || "Research failed",
-            });
-          }
-        },
-      });
+      if (mode === "pdf") {
+        const formData = new FormData();
+        formData.append("file", pdfFile);
+        if (title.trim()) formData.append("title", title.trim());
+        formData.append("language", language);
+        formData.append("subjectIds", Array.from(selectedSubjects).join(","));
+        await streamPost({
+          url: API_POST_LEARN_FROM_SOURCE,
+          body: formData,
+          onEvent: handleEvent,
+        });
+      } else if (mode === "url") {
+        await streamPost({
+          url: API_POST_LEARN_FROM_SOURCE,
+          body: {
+            url: url.trim(),
+            title: title.trim(),
+            language,
+            subjectIds: Array.from(selectedSubjects),
+          },
+          onEvent: handleEvent,
+        });
+      } else {
+        await streamPost({
+          url: API_POST_LEARN_ABOUT,
+          body: {
+            title: title.trim(),
+            input: input.trim(),
+            level,
+            language,
+            writingStyle,
+            searchWeb,
+            subjectIds: Array.from(selectedSubjects),
+          },
+          onEvent: handleEvent,
+        });
+      }
     } catch (err) {
       showToast({
         type: "danger",
@@ -188,6 +263,10 @@ export const IntroSection = () => {
       setLoading(false);
     }
   };
+
+  // imports (PDF/URL) get an extra extraction step before chapter crafting
+  const steps = mode === "ai" ? STEPS : IMPORT_STEPS;
+  const thumbnailStepIndex = steps.length - 1;
 
   return (
     <section>
@@ -202,19 +281,88 @@ export const IntroSection = () => {
       <div className='lg:rounded-2xl lg:border lg:border-dr-border lg:bg-dr-surface-light lg:p-6'>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
           <div className='flex flex-col gap-3'>
-            {/* Title only names the storage folder, nothing else */}
+            {/* Lesson source selector */}
+            <div className='flex flex-col gap-2'>
+              <span className='text-sm font-medium text-dr-text'>
+                Lesson Source
+              </span>
+              <div className='flex flex-wrap gap-3'>
+                {MODES.map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                      mode === option.value
+                        ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                        : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
+                    }`}
+                  >
+                    <input
+                      type='radio'
+                      name='lesson-mode'
+                      value={option.value}
+                      checked={mode === option.value}
+                      onChange={() => {
+                        setMode(option.value);
+                        // the file input is uncontrolled, so drop the stale
+                        // selection when leaving the PDF tab
+                        if (option.value !== "pdf") setPdfFile(null);
+                      }}
+                      className='sr-only'
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Title only names the storage folder, nothing else; imports fall
+                back to the file name or article title when left empty */}
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder='TItle for this lesson'
+              placeholder={
+                mode === "ai"
+                  ? "TItle for this lesson"
+                  : "Optional title for this lesson"
+              }
             />
-            <TextArea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder='Describe everythiing you want to know about it...'
-              minRows={3}
-            />
+
+            {mode === "ai" && (
+              <TextArea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder='Describe everythiing you want to know about it...'
+                minRows={3}
+              />
+            )}
+
+            {mode === "pdf" && (
+              <div className='flex flex-col gap-2'>
+                <Input
+                  type='file'
+                  accept='application/pdf'
+                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                />
+                {pdfFile && (
+                  <p className='text-xs text-dr-text-muted'>
+                    Selected: {pdfFile.name}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {mode === "url" && (
+              <Input
+                type='url'
+                required
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder='https://example.com/article'
+              />
+            )}
+
             {/* Research depth selector */}
+            {mode === "ai" && (
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>
                 Research Intensity
@@ -242,6 +390,7 @@ export const IntroSection = () => {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Language selector */}
             <div className='flex flex-col gap-2'>
@@ -270,7 +419,9 @@ export const IntroSection = () => {
               </div>
             </div>
 
-            {/* Writing style selector */}
+            {/* Writing style selector (AI research only — imports carry the
+                source text over exactly, translating only when needed) */}
+            {mode === "ai" && (
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>
                 Writing style
@@ -298,19 +449,22 @@ export const IntroSection = () => {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Toggle to let the model search the web while elaborating chapters */}
-            <div className='flex items-center justify-between'>
-              <span className='text-sm font-medium text-dr-text'>
-                Search the web
-              </span>
-              <Switch
-                primary
-                checked={searchWeb}
-                onChange={setSearchWeb}
-                disabled={loading}
-              />
-            </div>
+            {mode === "ai" && (
+              <div className='flex items-center justify-between'>
+                <span className='text-sm font-medium text-dr-text'>
+                  Search the web
+                </span>
+                <Switch
+                  primary
+                  checked={searchWeb}
+                  onChange={setSearchWeb}
+                  disabled={loading}
+                />
+              </div>
+            )}
             {/* Subject selector */}
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>Subjects</span>
@@ -372,7 +526,11 @@ export const IntroSection = () => {
                 name='book-outline'
                 className='text-dr-accent'
               ></ion-icon>
-              <span>Reading what others have written...</span>
+              <span>
+                {mode === "ai"
+                  ? "Reading what others have written..."
+                  : "Importing your content..."}
+              </span>
             </div>
           ) : (
             <Button type='submit' primary className='w-full'>
@@ -385,8 +543,8 @@ export const IntroSection = () => {
         {currentStep !== null && (
           <div className='relative mt-6'>
             <div className='absolute left-0 right-0 top-4 flex px-4'>
-              {STEPS.map((_, index) =>
-                index < STEPS.length - 1 ? (
+              {steps.map((_, index) =>
+                index < steps.length - 1 ? (
                   <div
                     key={index}
                     className={`h-0.5 flex-1 ${
@@ -397,10 +555,10 @@ export const IntroSection = () => {
               )}
             </div>
             <div className='relative flex items-center justify-between'>
-              {STEPS.map((step, index) => {
+              {steps.map((step, index) => {
                 const isActive = index === currentStep;
                 const isCompleted = index < currentStep;
-                const isError = thumbnailError && index === 2;
+                const isError = thumbnailError && index === thumbnailStepIndex;
                 return (
                   <div
                     key={step.key}
@@ -444,6 +602,13 @@ export const IntroSection = () => {
               </p>
             )}
           </div>
+        )}
+
+        {/* Live detail line while an import is extracting (e.g. "page 3 of 12") */}
+        {loading && mode !== "ai" && extractDetail && (
+          <p className='mt-3 text-center text-xs text-dr-text-muted'>
+            {extractDetail}
+          </p>
         )}
 
         {/* Progress of each chapter as it gets completed */}

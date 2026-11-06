@@ -19,6 +19,7 @@ export const API_POST_UPDATE_PROFILE = API_BASE + "/update-profile";
 
 // api learn routes
 export const API_POST_LEARN_ABOUT = API_BASE + "/learn-about";
+export const API_POST_LEARN_FROM_SOURCE = API_BASE + "/learn-from-source";
 export const API_GET_TOPIC = API_BASE + "/topic";
 export const API_GET_COURSES = API_BASE + "/courses";
 export const API_DELETE_COURSE = API_BASE + "/courses";

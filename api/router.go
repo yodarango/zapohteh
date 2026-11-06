@@ -22,6 +22,7 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_AUTH_SAMPLE, models.Authenticate(SampleAuth))
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, models.Authenticate(LearnAbout))
+	mux.HandleFunc(constants.ROUTE_POST_LEARN_FROM_SOURCE, models.Authenticate(LearnFromSource))
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
@@ -173,6 +174,11 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 	}
 	courseTitle = utils.SanitizeFilename(courseTitle)
 	if err := models.SaveCourseLanguage(authUser.Id, courseTitle, research.Language); err != nil {
+		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+		return
+	}
+	// Re-using a title through the AI pipeline resets the course source badge.
+	if err := models.SetCourseSource(authUser.Id, courseTitle, models.CourseSourceAI); err != nil {
 		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
 		return
 	}

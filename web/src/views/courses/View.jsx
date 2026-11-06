@@ -51,6 +51,9 @@ const LANGUAGE_FLAGS = {
   "koine greek": "🇬🇷",
 };
 
+// Badge shown on each course card indicating how the lesson was created.
+const SOURCE_BADGES = { ai: "AI", doc: "PDF", web: "Web" };
+
 const languageFlag = (language) => {
   if (!language) return null;
   return LANGUAGE_FLAGS[language.toLowerCase()] || "🏳️";
@@ -410,6 +413,9 @@ export const CoursesView = () => {
                       </span>
                     )}
                     {course.name}
+                  </span>
+                  <span className='shrink-0 rounded-full border border-dr-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dr-text-muted'>
+                    {SOURCE_BADGES[course.source] || "AI"}
                   </span>
                 </div>
 
