@@ -32,9 +32,11 @@ func (c *ChatMessage) Create() error {
 	return nil
 }
 
-// GetChatMessagesByCourse returns every message for a user's course, ordered oldest first.
+// GetChatMessagesByCourse returns every message for a user's course, ordered oldest
+// first. Chat threads are private to each participant: on a collaborated course the
+// caller reads their own thread stored against the owner's course.
 func GetChatMessagesByCourse(userId uint, courseTitle string) ([]ChatMessage, error) {
-	courseId, err := GetCourseID(userId, courseTitle)
+	_, courseId, _, err := ResolveCourseAccess(userId, courseTitle)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +151,11 @@ func truncate(text string, maxLen int) string {
 	return string(runes[:maxLen]) + "..."
 }
 
-// buildChatPrompt creates the system prompt and user prompt for the AI tutor.
-func buildChatPrompt(userId uint, courseId int, courseTitle, chapter, question string) (string, string) {
-	content := readCourseContent(userId, courseTitle)
+// buildChatPrompt creates the system prompt and user prompt for the AI tutor. The
+// lesson content is read from the owner's folder while the conversation history is
+// scoped to the asking user, since each participant keeps their own chat thread.
+func buildChatPrompt(ownerId, userId uint, courseId int, courseTitle, chapter, question string) (string, string) {
+	content := readCourseContent(ownerId, courseTitle)
 	title, chapterMap := parseCourseContent(content)
 
 	if chapter != "generic" {
@@ -202,9 +206,11 @@ func buildChatPrompt(userId uint, courseId int, courseTitle, chapter, question s
 	return system, question
 }
 
-// AskChat saves the user's question, queries the AI, and returns the assistant's response.
+// AskChat saves the user's question, queries the AI, and returns the assistant's
+// response. On a collaborated course the message is stored against the owner's
+// course under the caller's user id, keeping each participant's thread private.
 func AskChat(userId uint, courseTitle, chapter, question string) (*ChatMessage, error) {
-	courseId, err := GetCourseID(userId, courseTitle)
+	ownerId, courseId, _, err := ResolveCourseAccess(userId, courseTitle)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +226,7 @@ func AskChat(userId uint, courseTitle, chapter, question string) (*ChatMessage, 
 		return nil, err
 	}
 
-	systemPrompt, userPrompt := buildChatPrompt(userId, courseId, courseTitle, chapter, question)
+	systemPrompt, userPrompt := buildChatPrompt(ownerId, userId, courseId, courseTitle, chapter, question)
 
 	answer, err := lib.NewOpenAIService().Ask(systemPrompt, userPrompt)
 	if err != nil {

@@ -9,12 +9,13 @@ import { marked } from 'marked';
 import { authHeaders } from '@utils';
 import { useAppContext } from '@views/context/appContextProvider';
 import { SidebarNav } from '@components/MainLayout/Sidebar/Sidebar';
+import { avatars } from '@images';
 import zapohtehLogo from '../../../public/logo.webp';
 
 const DEBOUNCE_MS = 3000;
 
 export const NotesPanel = ({ topic }) => {
-  const { showToast } = useAppContext();
+  const { showToast, state } = useAppContext();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -68,7 +69,14 @@ export const NotesPanel = ({ topic }) => {
       if (!result.data) {
         throw new Error('Failed to create note');
       }
-      setNotes((prev) => [result.data, ...prev]);
+      // the create response carries no author join, so augment it with the
+      // current user so the header renders without a refetch
+      const created = {
+        ...result.data,
+        authorUsername: state.user?.username || '',
+        authorAvatar: state.user?.avatar || '',
+      };
+      setNotes((prev) => [created, ...prev]);
     } catch (err) {
       showToast({
         type: 'danger',
@@ -174,6 +182,7 @@ export const NotesPanel = ({ topic }) => {
           <NoteCard
             key={note.id}
             note={note}
+            currentUserId={state.user?.id}
             onUpdate={updateNote}
             onDelete={deleteNote}
           />
@@ -183,12 +192,17 @@ export const NotesPanel = ({ topic }) => {
   );
 };
 
-const NoteCard = ({ note, onUpdate, onDelete }) => {
+const NoteCard = ({ note, currentUserId, onUpdate, onDelete }) => {
   const [expanded, setExpanded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [body, setBody] = useState(note.body || '');
   const debounceTimerRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // only the author manages (collapse/edit/delete) their note; notes of other
+  // participants render read-only
+  const isOwn = note.userId === currentUserId;
+  const chosenAvatar = avatars.find((a) => a.pathName === note.authorAvatar);
 
   useEffect(() => {
     setBody(note.body || '');
@@ -228,48 +242,71 @@ const NoteCard = ({ note, onUpdate, onDelete }) => {
     setExpanded(false);
   };
 
-  const expand = () => setExpanded(true);
+  const expand = () => {
+    // editing is limited to the note's author
+    if (isOwn) setExpanded(true);
+  };
 
   const renderedMarkdown = marked.parse(body || '', { async: false });
 
   return (
     <div className='rounded-xl border border-dr-border bg-dr-surface p-3 shadow-sm transition-shadow hover:shadow-md'>
       <div className='mb-2 flex items-center justify-between'>
-        <span className='text-xs text-dr-text-muted'>
-          {new Date(note.updatedAt).toLocaleDateString()}
-        </span>
-        <div className='flex items-center gap-1'>
-          <button
-            type='button'
-            onClick={(e) => {
-              e.stopPropagation();
-              setCollapsed((prev) => !prev);
-            }}
-            className='flex h-6 w-6 items-center justify-center rounded text-dr-accent transition-colors hover:bg-dr-surface-light'
-            aria-label={collapsed ? 'Open note' : 'Collapse note'}
-            title={collapsed ? 'Open note' : 'Collapse note'}
-          >
-            <ion-icon
-              name={collapsed ? 'add-outline' : 'remove-outline'}
-              className='text-base'
-            />
-          </button>
-          <button
-            type='button'
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(note.id);
-            }}
-            className='flex h-6 w-6 items-center justify-center rounded text-dr-danger transition-colors hover:bg-dr-surface-light'
-            aria-label='Delete note'
-            title='Delete note'
-          >
-            ×
-          </button>
+        <div className='flex min-w-0 items-center gap-2'>
+          <div className='flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-[10px] font-semibold text-dr-accent'>
+            {chosenAvatar?.image ? (
+              <img
+                src={chosenAvatar.image}
+                alt={note.authorUsername}
+                className='h-full w-full object-cover'
+              />
+            ) : (
+              (note.authorUsername || '?').charAt(0).toUpperCase()
+            )}
+          </div>
+          {note.authorUsername && (
+            <span className='truncate text-xs font-medium text-dr-text'>
+              @{note.authorUsername}
+            </span>
+          )}
+          <span className='shrink-0 text-xs text-dr-text-muted'>
+            {new Date(note.updatedAt).toLocaleDateString()}
+          </span>
         </div>
+        {isOwn && (
+          <div className='flex items-center gap-1'>
+            <button
+              type='button'
+              onClick={(e) => {
+                e.stopPropagation();
+                setCollapsed((prev) => !prev);
+              }}
+              className='flex h-6 w-6 items-center justify-center rounded text-dr-accent transition-colors hover:bg-dr-surface-light'
+              aria-label={collapsed ? 'Open note' : 'Collapse note'}
+              title={collapsed ? 'Open note' : 'Collapse note'}
+            >
+              <ion-icon
+                name={collapsed ? 'add-outline' : 'remove-outline'}
+                className='text-base'
+              />
+            </button>
+            <button
+              type='button'
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(note.id);
+              }}
+              className='flex h-6 w-6 items-center justify-center rounded text-dr-danger transition-colors hover:bg-dr-surface-light'
+              aria-label='Delete note'
+              title='Delete note'
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
       {!collapsed &&
-        (expanded ? (
+        (expanded && isOwn ? (
           <textarea
             ref={textareaRef}
             value={body}
@@ -280,7 +317,7 @@ const NoteCard = ({ note, onUpdate, onDelete }) => {
             autoFocus
           />
         ) : (
-          <div onClick={expand} className='cursor-pointer'>
+          <div onClick={expand} className={isOwn ? 'cursor-pointer' : ''}>
             {body ? (
               <div
                 className='research-content text-sm text-dr-text'

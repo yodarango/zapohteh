@@ -58,6 +58,20 @@ export const TANJREEN_API_KEY = import.meta.env.TANJREEN_API_KEY;
 
 export const ROUTE_SUBJECTS = "/subjects";
 export const ROUTE_HIGHLIGHTS = "/highlights";
+export const ROUTE_SHARE = "/share";
+
+// public shared-lesson route (no authentication required)
+export const API_GET_SHARED_LESSON = API_BASE + "/share";
+// share link management (authenticated)
+export const API_POST_COURSE_SHARE = API_BASE + "/courses";
+
+// lesson collaboration (authenticated)
+export const API_USERS_SEARCH = API_BASE + "/users/search";
+export const API_COURSE_COLLABORATORS = API_BASE + "/courses";
+export const API_GET_COLLABORATIONS = API_BASE + "/collaborations";
+export const API_POST_COLLABORATION = API_BASE + "/collaborations";
+export const API_POST_COURSE_LEAVE = API_BASE + "/courses";
+export const API_GET_SHARED_COURSES = API_BASE + "/courses/shared";
 
 // user statuses
 export const USER_STATUS_PENDING = "pending";

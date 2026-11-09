@@ -10,6 +10,8 @@ import {
   Input,
   Select,
   TextArea,
+  PopupMenu,
+  PopupMenuItem,
 } from "@ds";
 import {
   API_GET_TOPIC,
@@ -26,15 +28,18 @@ import {
   API_GET_COURSE_HIGHLIGHTS,
   API_PUT_COURSE_HIGHLIGHTS,
   API_GET_HIGHLIGHTS,
+  API_POST_COURSE_SHARE,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
   ROUTE_COURSES,
-  TANJREEN_API_URL,
-  TANJREEN_API_KEY,
+  // Narrate feature disabled for now — unused
+  // TANJREEN_API_URL,
+  // TANJREEN_API_KEY,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
 import { ChatWidget } from "./ChatWidget";
+import { CollaborateModal } from "./CollaborateModal";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -72,6 +77,12 @@ export const LearnView = () => {
   const [subjects, setSubjects] = useState([]);
   const [courseSubjectIds, setCourseSubjectIds] = useState(new Set());
   const [coverImageLoading, setCoverImageLoading] = useState(false);
+  // token of the public share link when the lesson is shared, "" otherwise
+  const [shareToken, setShareToken] = useState("");
+  // caller's role on this lesson: "owner" or "collaborator" (drives which
+  // management controls are rendered)
+  const [role, setRole] = useState("owner");
+  const [showCollaborateModal, setShowCollaborateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isChaptersOpen, setIsChaptersOpen] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -257,6 +268,8 @@ export const LearnView = () => {
           setContent(topicResult.data?.content || "");
           setCoverImagePath(topicResult.data?.coverImagePath || "");
           setCourseLanguage(topicResult.data?.language || "");
+          setShareToken(topicResult.data?.shareToken || "");
+          setRole(topicResult.data?.role || "owner");
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
@@ -518,6 +531,60 @@ export const LearnView = () => {
     closeLearnMenu();
   };
 
+  // Enables the public share link for this lesson and copies it to the
+  // clipboard. Sharing an already shared lesson copies the existing link.
+  const shareCourse = async () => {
+    try {
+      const res = await fetch(
+        `${API_POST_COURSE_SHARE}/${encodeURIComponent(topic)}/share`,
+        { method: "POST", headers: authHeaders() },
+      );
+      const result = await res.json();
+      if (!result.success || !result.data?.shareToken) {
+        throw new Error(result.error || "Failed to create share link");
+      }
+      const token = result.data.shareToken;
+      setShareToken(token);
+      const link = `${window.location.origin}/share/${token}`;
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast({
+          type: "success",
+          message: "Share link copied to clipboard",
+        });
+      } catch {
+        // clipboard is unavailable (e.g. insecure origin): show the link instead
+        showToast({ type: "success", message: link });
+      }
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to create share link",
+      });
+    }
+  };
+
+  // Disables the public share link for this lesson.
+  const unshareCourse = async () => {
+    try {
+      const res = await fetch(
+        `${API_POST_COURSE_SHARE}/${encodeURIComponent(topic)}/share`,
+        { method: "DELETE", headers: authHeaders() },
+      );
+      const result = await res.json();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to disable share link");
+      }
+      setShareToken("");
+      showToast({ type: "success", message: "Share link disabled" });
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to disable share link",
+      });
+    }
+  };
+
   const progress = chapters.length
     ? Math.round((readChapters.size / chapters.length) * 100)
     : 0;
@@ -580,6 +647,7 @@ export const LearnView = () => {
     }, 500);
   };
 
+  /* Narrate feature disabled for now — unused
   const narrate = () => {
     if (!TANJREEN_API_KEY) {
       showToast({
@@ -611,6 +679,7 @@ export const LearnView = () => {
 
     showToast({ type: "info", message: "Narration request sent" });
   };
+  */
 
   const handleDeleteCourse = async () => {
     setIsDeleting(true);
@@ -859,30 +928,70 @@ export const LearnView = () => {
               />
             </div>
           )}
-          <div className='absolute right-3 top-3 z-10 flex items-center gap-2'>
-            <button
-              type='button'
-              onClick={openEditModal}
-              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
-              aria-label='Edit course'
-            >
-              <ion-icon name='create-outline' />
-              <span>Edit</span>
-            </button>
-            <button
-              type='button'
-              onClick={createCoverImage}
-              disabled={coverImageLoading}
-              className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
-            >
-              {coverImageLoading ? (
-                <Loading size={18} />
-              ) : (
-                <ion-icon name='image-outline' />
-              )}
-              <span>{coverImagePath ? "Recreate" : "Create"}</span>
-            </button>
-          </div>
+          {role === "owner" && (
+            <div className='absolute right-3 top-3 z-10 flex items-center gap-2'>
+              <button
+                type='button'
+                onClick={shareCourse}
+                className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+                aria-label='Share lesson'
+                title='Copy the public share link'
+              >
+                <ion-icon
+                  name={shareToken ? "link-outline" : "share-social-outline"}
+                />
+              </button>
+              <PopupMenu
+                trigger={
+                  <button
+                    type='button'
+                    className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+                    aria-label='Share options'
+                    title='Share options'
+                  >
+                    <ion-icon name='ellipsis-vertical-outline' />
+                  </button>
+                }
+              >
+                <PopupMenuItem
+                  icon={<ion-icon name='eye-off-outline' />}
+                  disabled={!shareToken}
+                  onClick={unshareCourse}
+                >
+                  Unshare
+                </PopupMenuItem>
+                <PopupMenuItem
+                  icon={<ion-icon name='people-outline' />}
+                  onClick={() => setShowCollaborateModal(true)}
+                >
+                  Collaborate
+                </PopupMenuItem>
+              </PopupMenu>
+              <button
+                type='button'
+                onClick={openEditModal}
+                className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light'
+                aria-label='Edit course'
+                title='Edit course'
+              >
+                <ion-icon name='create-outline' />
+              </button>
+              <button
+                type='button'
+                onClick={createCoverImage}
+                disabled={coverImageLoading}
+                className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
+                aria-label={coverImagePath ? "Recreate cover image" : "Create cover image"}
+                title={coverImagePath ? "Recreate cover image" : "Create cover image"}
+              >
+                {coverImageLoading ? (
+                  <Loading size={18} />
+                ) : (
+                  <ion-icon name='image-outline' />
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {chapters.length > 0 && (
@@ -955,21 +1064,23 @@ export const LearnView = () => {
                     ></ion-icon>
                     <span>Mark read</span>
                   </button>
-                  <Button
-                    secondary
-                    className='shrink-0 text-sm'
-                    disabled={isGenerating}
-                    onClick={() => createImage(chapter.title)}
-                  >
-                    {isGenerating ? (
-                      <Loading size={18} />
-                    ) : (
-                      <>
-                        <ion-icon name='image-outline'></ion-icon>
-                        <span className='ml-2'>Menmonic summary</span>
-                      </>
-                    )}
-                  </Button>
+                  {role === "owner" && (
+                    <Button
+                      secondary
+                      className='shrink-0 text-sm'
+                      disabled={isGenerating}
+                      onClick={() => createImage(chapter.title)}
+                    >
+                      {isGenerating ? (
+                        <Loading size={18} />
+                      ) : (
+                        <>
+                          <ion-icon name='image-outline'></ion-icon>
+                          <span className='ml-2'>Menmonic summary</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </section>
@@ -983,7 +1094,7 @@ export const LearnView = () => {
             className='absolute inset-0 bg-dr-accent/40'
             onClick={cancelPendingHighlight}
           />
-          <div className='relative z-10 w-[90vw] max-w-[60rem] overflow-hidden rounded-2xl bg-dr-surface p-6 shadow-lg'>
+          <div className='relative z-10 w-[90vw] max-w-[60rem] max-h-[90vh] overflow-y-auto rounded-2xl bg-dr-surface p-6 shadow-lg'>
             <div className='mb-6 flex items-center justify-between px-4'>
               <h4 className='text-xl font-bold'>
                 {editingHighlight ? "Edit highlight" : "Highlight"}
@@ -1013,8 +1124,8 @@ export const LearnView = () => {
                       }))
                     }
                     placeholder='Highlighted text...'
-                    minRows={2}
-                    maxRows={4}
+                    minHeight={56}
+                    maxHeight={160}
                     className='w-full text-sm'
                   />
                   <div className='flex flex-wrap items-center gap-2'>
@@ -1103,18 +1214,22 @@ export const LearnView = () => {
               <ion-icon name='download-outline'></ion-icon>
               <span className='ml-2'>Download PDF</span>
             </Button>
+            {/* Narrate feature disabled for now — unused
             <Button secondary className='w-full' onClick={narrate}>
               <ion-icon name='musical-notes-outline'></ion-icon>
               <span className='ml-2'>Narrate</span>
             </Button>
-            <Button
-              danger
-              className='w-full'
-              onClick={() => setShowDeleteModal(true)}
-            >
-              <ion-icon name='trash-outline'></ion-icon>
-              <span className='ml-2'>Delete course</span>
-            </Button>
+            */}
+            {role === "owner" && (
+              <Button
+                danger
+                className='w-full'
+                onClick={() => setShowDeleteModal(true)}
+              >
+                <ion-icon name='trash-outline'></ion-icon>
+                <span className='ml-2'>Delete course</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1359,6 +1474,14 @@ export const LearnView = () => {
       </div>
 
       <ChatWidget topic={topic} chapters={chapters} />
+
+      {role === "owner" && (
+        <CollaborateModal
+          open={showCollaborateModal}
+          onClose={() => setShowCollaborateModal(false)}
+          topic={topic}
+        />
+      )}
     </div>
   );
 };

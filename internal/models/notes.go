@@ -66,6 +66,27 @@ func CreateNote(userId uint, courseTitle string, note Note) (int, error) {
 	return int(id), nil
 }
 
+// CreateNoteForCourse inserts a new note against a known course id. Unlike
+// CreateNote it never creates the course row, so it is safe for collaborators
+// writing notes on someone else's course.
+func CreateNoteForCourse(userId uint, courseId int, body string) (int, error) {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return 0, fmt.Errorf("database is not available")
+	}
+	res, err := ModelsRepo.DB.Conn.Exec(`
+		INSERT INTO notes (user_id, course_id, body)
+		VALUES (?, ?, ?)
+	`, userId, courseId, body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create note: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get note id: %w", err)
+	}
+	return int(id), nil
+}
+
 // UpdateNote updates an existing note owned by the user.
 func UpdateNote(userId uint, noteID int, note Note) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {

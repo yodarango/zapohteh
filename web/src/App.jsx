@@ -7,6 +7,7 @@ import {
   SubjectsView,
   HighlightsView,
   MeView,
+  ShareView,
 } from "@views";
 import { MainLayout, ProtectedRoute, AuthRoute } from "@components";
 import {
@@ -25,6 +26,7 @@ import {
   ROUTE_USERS_ME,
   ROUTE_CREATE,
   ROUTE_HIGHLIGHTS,
+  ROUTE_SHARE,
 } from "@constants";
 
 const router = createBrowserRouter(
@@ -45,6 +47,9 @@ const router = createBrowserRouter(
         <Route path={ROUTE_AUTH} element={<AuthView />} />
         <Route path={ROUTE_AUTH_VERIFY} element={<AuthVerifyView />} />
       </Route>
+
+      {/* public shared-lesson page (no authentication required) */}
+      <Route path={`${ROUTE_SHARE}/:token`} element={<ShareView />} />
     </Route>,
   ),
 );

@@ -121,6 +121,11 @@ type Course struct {
 	CreatedAt      time.Time  `json:"createdAt"`
 	LastReadAt     *time.Time `json:"lastReadAt"`
 	CompletedAt    *time.Time `json:"completedAt"`
+	// Role is set only by ListSharedCourses: "owner" for the caller's own shared
+	// courses, "collaborator" for courses shared with the caller.
+	Role string `json:"role,omitempty"`
+	// Owner is the course owner's username, set only for collaborator courses.
+	Owner string `json:"owner,omitempty"`
 }
 
 /**************************************************************************************
@@ -807,13 +812,15 @@ func ListAllCourseHighlights(userId uint, limit, offset int) ([]AllCourseHighlig
 	return highlights, total, nil
 }
 
-// ReadHighlights reads the persisted highlights for a user's course.
+// ReadHighlights reads the persisted highlights for a user's course. Highlights are
+// private to each participant: on a collaborated course the caller reads their own
+// highlights stored against the owner's course.
 func ReadHighlights(userId uint, title string) ([]Highlight, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return nil, fmt.Errorf("database is not available")
 	}
 
-	courseId, err := getCourseID(userId, title)
+	_, courseId, _, err := ResolveCourseAccess(userId, title)
 	if err != nil {
 		return []Highlight{}, nil
 	}
@@ -863,12 +870,14 @@ func DeleteCourseHighlight(userId uint, id int) error {
 }
 
 // WriteHighlights replaces all highlights for a user's course with the given list.
+// Highlights are private to each participant: on a collaborated course the caller's
+// highlights are stored against the owner's course under the caller's user id.
 func WriteHighlights(userId uint, title string, highlights []Highlight) error {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
 
-	courseId, err := getCourseID(userId, title)
+	_, courseId, _, err := ResolveCourseAccess(userId, title)
 	if err != nil {
 		return err
 	}

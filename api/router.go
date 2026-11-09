@@ -27,6 +27,20 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE, models.Authenticate(PutCourse))
+	mux.HandleFunc(constants.ROUTE_POST_COURSE_SHARE, models.Authenticate(ShareCourse))
+	mux.HandleFunc(constants.ROUTE_DELETE_COURSE_SHARE, models.Authenticate(UnshareCourse))
+	// public shared-lesson route (no authentication required)
+	mux.HandleFunc(constants.ROUTE_GET_SHARED_LESSON, GetSharedLesson)
+
+	// lesson collaboration
+	mux.HandleFunc(constants.ROUTE_GET_USERS_SEARCH, models.Authenticate(SearchUsers))
+	mux.HandleFunc(constants.ROUTE_COURSE_COLLABORATORS, models.Authenticate(InviteCollaborator))
+	mux.HandleFunc(constants.ROUTE_GET_COURSE_COLLABORATORS, models.Authenticate(ListCollaborators))
+	mux.HandleFunc(constants.ROUTE_DELETE_COURSE_COLLABORATOR, models.Authenticate(RemoveCollaborator))
+	mux.HandleFunc(constants.ROUTE_GET_COLLABORATIONS, models.Authenticate(ListPendingInvites))
+	mux.HandleFunc(constants.ROUTE_POST_COLLABORATION, models.Authenticate(RespondToInvite))
+	mux.HandleFunc(constants.ROUTE_POST_COURSE_LEAVE, models.Authenticate(LeaveCourse))
+	mux.HandleFunc(constants.ROUTE_GET_SHARED_COURSES, models.Authenticate(ListSharedCourses))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_IMAGES, models.Authenticate(GetCourseImages))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE_COVER, models.Authenticate(PutCourseCover))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_HIGHLIGHTS, models.Authenticate(GetCourseHighlights))
@@ -971,7 +985,19 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	research := models.Research{Title: name, UserID: authUser.Id}
+	// The lesson is readable by its owner and by accepted collaborators; the
+	// content lives under the owner's folder either way. The caller's own course
+	// wins when both share the same title.
+	ownerId, _, role, err := models.ResolveCourseAccess(authUser.Id, name)
+	if err != nil {
+		httpResponse.Error = "topic not found"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	research := models.Research{Title: name, UserID: ownerId}
 	content, err := research.ReadContent()
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
@@ -981,12 +1007,18 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpResponse.Data = map[string]interface{}{
+	data := map[string]interface{}{
 		"topic":          name,
 		"content":        content,
-		"coverImagePath": models.GetCoverImagePath(authUser.Id, name),
-		"language":       models.GetCourseLanguage(authUser.Id, name),
+		"coverImagePath": models.GetCoverImagePath(ownerId, name),
+		"language":       models.GetCourseLanguage(ownerId, name),
+		"role":           role,
 	}
+	// only the owner manages the public share link
+	if role == models.CourseRoleOwner {
+		data["shareToken"] = models.GetCourseShareToken(ownerId, name)
+	}
+	httpResponse.Data = data
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
@@ -1909,7 +1941,8 @@ func NotesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Returns all notes for a course.
+* Returns all notes for a course. Notes are course-wide for the course's
+* participants (owner and collaborators), each enriched with its author.
 ************************************************************************/
 func GetNotes(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
@@ -1932,7 +1965,16 @@ func GetNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notes, err := models.GetNotesByCourse(authUser.Id, course)
+	_, courseId, _, err := models.ResolveCourseAccess(authUser.Id, course)
+	if err != nil {
+		httpResponse.Error = "course not found"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	notes, err := models.GetCourseNotesWithAuthors(courseId)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -1948,7 +1990,9 @@ func GetNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Creates a new note for a course.
+* Creates a new note for a course. Both the owner and collaborators can add
+* notes; the note is stored against the owner's course with the caller as
+* its author.
 ************************************************************************/
 func CreateNote(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
@@ -1980,7 +2024,16 @@ func CreateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := models.CreateNote(authUser.Id, course, note)
+	_, courseId, _, err := models.ResolveCourseAccess(authUser.Id, course)
+	if err != nil {
+		httpResponse.Error = "course not found"
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
+	id, err := models.CreateNoteForCourse(authUser.Id, courseId, note.Body)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -1990,6 +2043,8 @@ func CreateNote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	note.ID = id
+	note.UserID = authUser.Id
+	note.CourseID = courseId
 	httpResponse.Data = note
 	httpResponse.Success = true
 	httpResponse.Error = nil

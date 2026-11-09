@@ -148,9 +148,11 @@ func SetCourseSubjects(userId uint, courseTitle string, subjectIDs []int) error 
 	return tx.Commit()
 }
 
-// GetCourseSubjects returns the subjects attached to a user's course.
+// GetCourseSubjects returns the subjects attached to a user's course. Access is
+// resolved through ResolveCourseAccess so collaborators read the owner's course
+// subjects without a phantom course row being created in their own account.
 func GetCourseSubjects(userId uint, courseTitle string) ([]Subject, error) {
-	courseId, err := GetCourseID(userId, courseTitle)
+	_, courseId, _, err := ResolveCourseAccess(userId, courseTitle)
 	if err != nil {
 		return []Subject{}, err
 	}

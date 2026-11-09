@@ -6,3 +6,4 @@ export { CoursesView } from "./courses/View";
 export { SubjectsView } from "./subjects/View";
 export { HighlightsView } from "./highlights/View";
 export { MeView } from "./users/MeView";
+export { ShareView } from "./share/View";

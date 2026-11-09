@@ -12,6 +12,8 @@ import {
   API_GET_COURSES,
   API_DELETE_COURSE,
   API_GET_SUBJECTS,
+  API_GET_SHARED_COURSES,
+  API_POST_COURSE_LEAVE,
   ROUTE_LEARN,
 } from "@constants";
 import { useGet, formatLocalTime } from "@utils";
@@ -58,6 +60,160 @@ const languageFlag = (language) => {
   if (!language) return null;
   return LANGUAGE_FLAGS[language.toLowerCase()] || "🏳️";
 };
+
+/* *************************************************************************************************
+ * A single course card, shared by the All and Shared tabs. Cards of courses shared with the
+ * caller (role "collaborator") show the owner and a Leave action instead of Delete; the caller's
+ * own shared courses carry a small people marker.
+ * *************************************************************************************************
+ */
+const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
+  <div className='group relative flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'>
+    <Link
+      to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}
+      className='flex flex-col gap-3'
+    >
+      {course.coverImagePath ? (
+        <Thumbnail
+          src={course.coverImagePath}
+          alt={course.name}
+          className='h-28 w-full rounded-xl'
+        />
+      ) : (
+        <div
+          className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
+            TINTS[index % TINTS.length]
+          }`}
+        >
+          <ion-icon name='book-outline'></ion-icon>
+        </div>
+      )}
+      <div className='flex items-center justify-between gap-2'>
+        <span className='flex items-center gap-2 font-semibold text-dr-text line-clamp-2'>
+          {course.language && (
+            <span title={course.language}>{languageFlag(course.language)}</span>
+          )}
+          {course.name}
+        </span>
+        <span className='flex shrink-0 items-center gap-1.5'>
+          {sharedMarker && (
+            <span
+              className='flex items-center text-dr-text-muted'
+              title='Shared with collaborators'
+            >
+              <ion-icon name='people-outline'></ion-icon>
+            </span>
+          )}
+          <span className='rounded-full border border-dr-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dr-text-muted'>
+            {SOURCE_BADGES[course.source] || "AI"}
+          </span>
+        </span>
+      </div>
+
+      {course.role === "collaborator" && course.owner && (
+        <span className='text-xs text-dr-text-muted'>by @{course.owner}</span>
+      )}
+
+      <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
+        <span>Created: {formatLocalTime(course.createdAt)}</span>
+
+        <span>
+          Last read:{" "}
+          {course.lastReadAt && !course.completedAt
+            ? formatLocalTime(course.lastReadAt)
+            : "Not started"}
+        </span>
+
+        {course.completedAt && (
+          <span className='text-dr-success'>
+            Completed: {formatLocalTime(course.completedAt)}
+          </span>
+        )}
+      </div>
+
+      {course.totalChapters > 0 && (
+        <div className='mt-2'>
+          {course.readChapters === course.totalChapters ? (
+            <div className='flex items-center gap-1.5 text-sm text-dr-success'>
+              <ion-icon name='checkmark-circle'></ion-icon>
+              <span className='font-medium'>Read</span>
+            </div>
+          ) : (
+            <>
+              <div className='mb-1 flex items-center justify-between text-xs text-dr-text-muted'>
+                <span>Progress</span>
+                <span>
+                  {course.readChapters} of {course.totalChapters}
+                </span>
+              </div>
+              <div className='h-1.5 w-full overflow-hidden rounded-full bg-dr-border'>
+                <div
+                  className='h-full rounded-full bg-dr-accent'
+                  style={{
+                    width: `${Math.round(
+                      (course.readChapters / course.totalChapters) * 100,
+                    )}%`,
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {course.subjects && course.subjects.length > 0 ? (
+        <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+          {course.subjects.map((subject) => (
+            <div
+              key={subject.id}
+              className='flex flex-wrap items-center gap-1.5'
+            >
+              <span
+                title={subject.name}
+                className='inline-block h-2.5 w-2.5 rounded-full'
+                style={{ backgroundColor: subject.color }}
+              />
+              <span>{subject.name}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className='flex flex-wrap items-center gap-1.5'>
+          <span className='inline-block h-2.5 w-2.5 rounded-full bg-gray-200' />
+          <span>General</span>
+        </div>
+      )}
+    </Link>
+
+    {onLeave ? (
+      <Button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onLeave(course);
+        }}
+        className=''
+        secondary
+      >
+        <ion-icon name='exit-outline' className='text-lg' />
+        Leave
+      </Button>
+    ) : (
+      <Button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete(course);
+        }}
+        className=''
+        danger
+      >
+        <ion-icon name='trash-outline' className='text-lg' />
+        Delete
+      </Button>
+    )}
+  </div>
+);
 
 /* *************************************************************************************************
  * Lists every researched topic stored in the backend data directory as a grid of course cards,
@@ -123,6 +279,52 @@ export const CoursesView = () => {
 
   const [courseToDelete, setCourseToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // "all" lists every own course with filters; "shared" lists the courses that
+  // involve collaborators (mine with accepted collaborators + shared with me)
+  const [activeTab, setActiveTab] = useState("all");
+
+  const {
+    data: sharedData,
+    loading: sharedLoading,
+    error: sharedError,
+    refetch: refetchShared,
+  } = useGet({ url: API_GET_SHARED_COURSES, avoidFirstFetch: true });
+  const sharedCourses = useMemo(() => sharedData || [], [sharedData]);
+
+  // fetch the shared list the first time the Shared tab is opened
+  useEffect(() => {
+    if (activeTab === "shared") refetchShared();
+  }, [activeTab, refetchShared]);
+
+  useEffect(() => {
+    if (sharedError) {
+      showToast({ type: "danger", message: String(sharedError) });
+    }
+  }, [sharedError, showToast]);
+
+  // Removes the caller's own collaboration from a course shared with them.
+  const leaveCourse = async (course) => {
+    try {
+      const response = await fetch(
+        `${API_POST_COURSE_LEAVE}/${encodeURIComponent(course.id)}/leave`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + localStorage.getItem("auth"),
+          },
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.errors || result.error || "Failed to leave course");
+      }
+      showToast({ type: "success", message: "Left course" });
+      refetchShared();
+    } catch (err) {
+      showToast({ type: "danger", message: err.message });
+    }
+  };
 
   const [sortBy, setSortBy] = useState(() => {
     if (typeof window === "undefined") return "lastRead";
@@ -230,6 +432,8 @@ export const CoursesView = () => {
       showToast({ type: "success", message: "Course deleted" });
       refetchCourses();
       refetchAllCourses();
+      // keep the shared list in sync when deleting from the Shared tab
+      if (sharedData) refetchShared();
     } catch (err) {
       showToast({ type: "danger", message: err.message });
     } finally {
@@ -247,21 +451,84 @@ export const CoursesView = () => {
             Every topic you have researched so far.
           </p>
         </div>
-        <div className='flex items-center gap-2'>
-          <span className='text-sm text-dr-text-muted'>Sort by</span>
-          <Select
-            value={sortBy}
-            onChange={(val) => setSortBy(val)}
-            options={[
-              { value: "lastRead", label: "Last read" },
-              { value: "title", label: "Title" },
-              { value: "created", label: "Date created" },
-            ]}
-            className='min-w-[9rem]'
-          />
-        </div>
+        {activeTab === "all" && (
+          <div className='flex items-center gap-2'>
+            <span className='text-sm text-dr-text-muted'>Sort by</span>
+            <Select
+              value={sortBy}
+              onChange={(val) => setSortBy(val)}
+              options={[
+                { value: "lastRead", label: "Last read" },
+                { value: "title", label: "Title" },
+                { value: "created", label: "Date created" },
+              ]}
+              className='min-w-[9rem]'
+            />
+          </div>
+        )}
       </div>
 
+      {/* All / Shared tab pills */}
+      <div className='mb-6 flex gap-3'>
+        {[
+          { value: "all", label: "All" },
+          { value: "shared", label: "Shared" },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            type='button'
+            onClick={() => setActiveTab(tab.value)}
+            className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.value
+                ? "border-dr-accent bg-dr-accent-light text-dr-accent"
+                : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "shared" && (
+        <>
+          {sharedLoading && (
+            <div className='flex justify-center py-20'>
+              <Loading size={40} />
+            </div>
+          )}
+
+          {!sharedLoading && sharedCourses.length === 0 && (
+            <p className='py-20 text-center text-dr-text-muted'>
+              No shared lessons yet. Invite collaborators from a lesson page, or
+              accept an invitation from the notifications bell.
+            </p>
+          )}
+
+          {!sharedLoading && sharedCourses.length > 0 && (
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+              {sharedCourses.map((course, index) => (
+                <CourseCard
+                  key={`${course.role || "owner"}-${course.id}`}
+                  course={course}
+                  index={index}
+                  sharedMarker={course.role === "owner"}
+                  onDelete={
+                    course.role === "owner"
+                      ? (c) => setCourseToDelete(c)
+                      : undefined
+                  }
+                  onLeave={
+                    course.role === "collaborator" ? leaveCourse : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === "all" && (
+        <>
       <div className='mb-4'>
         <Input
           placeholder='Search courses by title...'
@@ -382,130 +649,16 @@ export const CoursesView = () => {
       {!loading && courses.length > 0 && (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {sortedCourses.map((course, index) => (
-            <div
+            <CourseCard
               key={course.id}
-              className='group relative flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'
-            >
-              <Link
-                to={`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`}
-                className='flex flex-col gap-3'
-              >
-                {course.coverImagePath ? (
-                  <Thumbnail
-                    src={course.coverImagePath}
-                    alt={course.name}
-                    className='h-28 w-full rounded-xl'
-                  />
-                ) : (
-                  <div
-                    className={`flex h-28 items-center justify-center rounded-xl text-3xl ${
-                      TINTS[index % TINTS.length]
-                    }`}
-                  >
-                    <ion-icon name='book-outline'></ion-icon>
-                  </div>
-                )}
-                <div className='flex items-center justify-between gap-2'>
-                  <span className='flex items-center gap-2 font-semibold text-dr-text line-clamp-2'>
-                    {course.language && (
-                      <span title={course.language}>
-                        {languageFlag(course.language)}
-                      </span>
-                    )}
-                    {course.name}
-                  </span>
-                  <span className='shrink-0 rounded-full border border-dr-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dr-text-muted'>
-                    {SOURCE_BADGES[course.source] || "AI"}
-                  </span>
-                </div>
-
-                <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
-                  <span>Created: {formatLocalTime(course.createdAt)}</span>
-
-                  <span>
-                    Last read:{" "}
-                    {course.lastReadAt && !course.completedAt
-                      ? formatLocalTime(course.lastReadAt)
-                      : "Not started"}
-                  </span>
-
-                  {course.completedAt && (
-                    <span className='text-dr-success'>
-                      Completed: {formatLocalTime(course.completedAt)}
-                    </span>
-                  )}
-                </div>
-
-                {course.totalChapters > 0 && (
-                  <div className='mt-2'>
-                    {course.readChapters === course.totalChapters ? (
-                      <div className='flex items-center gap-1.5 text-sm text-dr-success'>
-                        <ion-icon name='checkmark-circle'></ion-icon>
-                        <span className='font-medium'>Read</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className='mb-1 flex items-center justify-between text-xs text-dr-text-muted'>
-                          <span>Progress</span>
-                          <span>
-                            {course.readChapters} of {course.totalChapters}
-                          </span>
-                        </div>
-                        <div className='h-1.5 w-full overflow-hidden rounded-full bg-dr-border'>
-                          <div
-                            className='h-full rounded-full bg-dr-accent'
-                            style={{
-                              width: `${Math.round(
-                                (course.readChapters / course.totalChapters) *
-                                  100,
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {course.subjects && course.subjects.length > 0 ? (
-                  <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-                    {course.subjects.map((subject) => (
-                      <div
-                        key={subject.id}
-                        className='flex flex-wrap items-center gap-1.5'
-                      >
-                        <span
-                          title={subject.name}
-                          className='inline-block h-2.5 w-2.5 rounded-full'
-                          style={{ backgroundColor: subject.color }}
-                        />
-                        <span>{subject.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className='flex flex-wrap items-center gap-1.5'>
-                    <span className='inline-block h-2.5 w-2.5 rounded-full bg-gray-200' />
-                    <span>General</span>
-                  </div>
-                )}
-              </Link>
-
-              <Button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setCourseToDelete(course);
-                }}
-                className=''
-                danger
-              >
-                <ion-icon name='trash-outline' className='text-lg' />
-                Delete
-              </Button>
-            </div>
+              course={course}
+              index={index}
+              onDelete={(c) => setCourseToDelete(c)}
+            />
           ))}
         </div>
+      )}
+        </>
       )}
 
       <ConfirmationModal
