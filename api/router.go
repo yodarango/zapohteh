@@ -54,8 +54,8 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_POST_CHAPTER_IMAGE, models.Authenticate(ChapterImage))
 	mux.HandleFunc(constants.ROUTE_GET_READING_PROGRESS, models.Authenticate(ReadingProgressHandler))
 	mux.HandleFunc(constants.ROUTE_GET_SUBJECTS, models.Authenticate(SubjectsHandler))
-	mux.HandleFunc("PUT /api/subjects/{id}", models.Authenticate(PutSubject))
-	mux.HandleFunc("DELETE /api/subjects/{id}", models.Authenticate(DeleteSubject))
+	mux.HandleFunc(constants.ROUTE_PUT_SUBJECTS_ID, models.Authenticate(PutSubject))
+	mux.HandleFunc(constants.ROUTE_DELETE_SUBJECTS_ID, models.Authenticate(DeleteSubject))
 	mux.HandleFunc(constants.ROUTE_GET_COURSE_SUBJECTS, models.Authenticate(CourseSubjectsHandler))
 
 	// tanjreen audiobook transformation API (API key auth, separate from JWT UI auth)
