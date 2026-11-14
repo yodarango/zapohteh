@@ -1,0 +1,4 @@
+- in the create a new course page, there is a button to upload a pdf but there is no zone to drag and drop. I need a zone to drag and drop a file so I don't have to click the button
+- when I go to create a new course, if i paste a link to webpage but then select PDF and upload a file and start the conversion, the course generated seems to conbine both sources? moreover, it gets created with the title of the URL section but includes the pdf content? Fix this. THe creation must happen for whatever tab I find myself in and incude only that data.
+- ⚠️ Quando elimino un corso sono ridiresso a /courses. Questo e probabilmente corretto ma vorrei che / non mostri i courss ma altre cose, magari stats?
+- You are using emojies for the tabs in the create page. Use the library of icons for the other content and put this in your memories: never use emojies as icons.
