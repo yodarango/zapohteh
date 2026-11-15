@@ -90,14 +90,25 @@ func UnshareCourse(w http.ResponseWriter, r *http.Request) {
 }
 
 /************************************************************************
-* Serves a shared lesson publicly, without requiring authentication: the
-* assembled markdown content, cover image, language and notes of the single
-* course the share token belongs to, and nothing else.
+* Serves a shared lesson publicly. The share token alone is enough to read the
+* assembled lesson content; when the request also carries a valid auth token the
+* response additionally identifies whether the viewer is the owner, an accepted
+* collaborator, or just someone opening the shared link.
 *********************************************************************/
 func GetSharedLesson(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
-	shared, err := models.GetSharedCourse(r.PathValue("token"))
+	var viewer *models.AuthUser
+	tokenString := r.Header.Get("Authorization")
+	if tokenString != "" {
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		tokenString = strings.ReplaceAll(strings.TrimSpace(tokenString), "\"", "")
+		if user, err := models.VerifyToken(tokenString); err == nil {
+			viewer = user
+		}
+	}
+
+	shared, err := models.GetSharedCourse(r.PathValue("token"), viewer)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false

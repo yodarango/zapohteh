@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { avatars } from "@images";
 
 export const AvatarPicker = (props) => {
-  const { onSave, isLoading, onSuccess, withConfirmation } = props;
+  const { onSave, isLoading, onSuccess, withConfirmation, zIndex = 17 } = props;
 
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [currentAvatar, setCurrentAvatar] = useState("");
@@ -30,7 +30,7 @@ export const AvatarPicker = (props) => {
         onClose={() => setShowConfirmationModal(false)}
         open={showConfirmationModal}
         showWaves={false}
-        zIndex={17}
+        zIndex={zIndex}
       >
         <div className='flex items-center justify-center w-full gap-4 mt-4'>
           <Button

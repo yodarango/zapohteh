@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+/* eslint-disable react/prop-types */
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -12,6 +13,7 @@ import {
   TextArea,
   PopupMenu,
   PopupMenuItem,
+  IfElse,
 } from "@ds";
 import {
   API_GET_TOPIC,
@@ -29,6 +31,9 @@ import {
   API_PUT_COURSE_HIGHLIGHTS,
   API_GET_HIGHLIGHTS,
   API_POST_COURSE_SHARE,
+  API_GET_SHARED_LESSON,
+  API_POST_COURSE_LEAVE,
+  API_POST_NOTES,
   API_BASE,
   ROUTE_HOME,
   ROUTE_LEARN,
@@ -42,6 +47,10 @@ import { ChatWidget } from "./ChatWidget";
 import { CollaborateModal } from "./CollaborateModal";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
+import { LoginForm } from "../auth/components/LoginForm/LoginForm";
+import { SignupForm } from "../auth/components/SignupForm/SignupForm";
+import { avatars } from "@images";
+import zapohtehLogo from "../../../public/logo.webp";
 
 // turns a chapter title into a DOM id that can be used as an anchor target
 const chapterSlug = (title) =>
@@ -50,6 +59,49 @@ const chapterSlug = (title) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
+const SharedNoteCard = ({ note }) => {
+  const chosenAvatar = avatars.find((a) => a.pathName === note.authorAvatar);
+  return (
+    <div className='rounded-xl border border-dr-border bg-dr-surface p-3 shadow-sm transition-shadow hover:shadow-md'>
+      <div className='mb-2 flex items-center justify-between'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <div className='flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-[10px] font-semibold text-dr-accent'>
+            {chosenAvatar?.image ? (
+              <img
+                src={chosenAvatar.image}
+                alt={note.author}
+                className='h-full w-full object-cover'
+              />
+            ) : (
+              (note.author || "?").charAt(0).toUpperCase()
+            )}
+          </div>
+          {note.author && (
+            <span className='truncate text-xs font-medium text-dr-text'>
+              @{note.author}
+            </span>
+          )}
+          <span className='shrink-0 text-xs text-dr-text-muted'>
+            {new Date(note.updatedAt).toLocaleDateString()}
+          </span>
+        </div>
+      </div>
+      <div>
+        {note.body ? (
+          <div
+            className='research-content text-sm text-dr-text'
+            dangerouslySetInnerHTML={{
+              __html: marked.parse(note.body || "", { async: false }),
+            }}
+          />
+        ) : (
+          <span className='text-sm text-dr-text-muted'>Empty note</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* *************************************************************************************************
  * Renders the assembled markdown research for a single topic, split into chapters so each chapter
  * heading can carry a "Create summary image" button. Clicking the button asks the backend to
@@ -57,9 +109,11 @@ const chapterSlug = (title) =>
  * *************************************************************************************************
  */
 export const LearnView = () => {
-  const { topic } = useParams();
+  const { topic: routeTopic, token } = useParams();
   const navigate = useNavigate();
   const { showToast, state, closeLearnMenu } = useAppContext();
+
+  const isShared = Boolean(token);
 
   // tracks whether the "x" key is currently held down, so the user can
   // press x while selecting text to copy it without opening the note modal
@@ -101,6 +155,22 @@ export const LearnView = () => {
   const [editingHighlight, setEditingHighlight] = useState(null);
   const [viewingNote, setViewingNote] = useState(null);
 
+  // Shared-view specific states
+  const [sharedData, setSharedData] = useState(null);
+  const [sharedNotes, setSharedNotes] = useState([]);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authPromptMessage, setAuthPromptMessage] = useState("");
+  const [showNoPermissionsModal, setShowNoPermissionsModal] = useState(false);
+  const [showAbandonModal, setShowAbandonModal] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const sharedContentRef = useRef(null);
+
+  const topic = isShared ? sharedData?.title || "" : routeTopic || "";
+  const access = isShared ? sharedData?.access || "anonymous" : role;
+  const canOpenInApp = access === "owner" || access === "collaborator";
+  const isAuthenticated = state.isAuthenticated;
+
   const renderMarkdownWithHighlights = (markdown, chapter = "") => {
     if (!markdown) return "";
     const html = marked.parse(markdown);
@@ -115,94 +185,116 @@ export const LearnView = () => {
     const doc = parser.parseFromString(html, "text/html");
     const body = doc.body;
 
-    relevant.forEach(({ text, highlightId, chapter: chapterName, note }) => {
-      if (!text) return;
-      const userHighlight = userHighlights.find((h) => h.id === highlightId);
-      const color = userHighlight?.color || "#ffeb3b";
-      const walker = document.createTreeWalker(
-        body,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false,
-      );
-      const textNodes = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node.parentElement?.closest("mark.highlight")) continue;
-        if (node.textContent.includes(text)) {
-          textNodes.push(node);
-        }
-      }
-
-      textNodes.forEach((textNode) => {
-        const parts = textNode.textContent.split(text);
-        if (parts.length <= 1) return;
-
-        const fragment = document.createDocumentFragment();
-        parts.forEach((part, index) => {
-          fragment.appendChild(document.createTextNode(part));
-          if (index < parts.length - 1) {
-            const mark = document.createElement("mark");
-            mark.className =
-              "highlight rounded-md px-1 py-0.5 box-decoration-clone";
-            mark.style.backgroundColor = color;
-            mark.appendChild(document.createTextNode(text));
-            if (note) {
-              mark.setAttribute("title", note);
-            }
-
-            const actions = document.createElement("span");
-            actions.className =
-              "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
-
-            const editBtn = document.createElement("button");
-            editBtn.className =
-              "highlight-edit inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
-            editBtn.setAttribute("data-highlight-text", text);
-            editBtn.setAttribute("data-highlight-id", String(highlightId));
-            editBtn.setAttribute("data-highlight-chapter", chapterName || "");
-            editBtn.setAttribute("data-highlight-note", note || "");
-            editBtn.setAttribute("aria-label", "Edit highlight");
-            editBtn.setAttribute("title", "Edit highlight");
-            editBtn.innerHTML = "<ion-icon name='create-outline'></ion-icon>";
-            actions.appendChild(editBtn);
-
-            if (note) {
-              const noteBtn = document.createElement("button");
-              noteBtn.className =
-                "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
-              noteBtn.setAttribute("data-highlight-note", note);
-              noteBtn.setAttribute("data-highlight-text", text);
-              noteBtn.setAttribute("data-highlight-chapter", chapterName || "");
-              noteBtn.setAttribute(
-                "data-highlight-label",
-                userHighlight?.label || "",
-              );
-              noteBtn.setAttribute("aria-label", "View note");
-              noteBtn.setAttribute("title", "View note");
-              noteBtn.innerHTML =
-                "<ion-icon name='document-outline'></ion-icon>";
-              actions.appendChild(noteBtn);
-            }
-
-            const deleteBtn = document.createElement("button");
-            deleteBtn.className =
-              "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
-            deleteBtn.setAttribute("data-highlight-text", text);
-            deleteBtn.setAttribute("data-highlight-id", String(highlightId));
-            deleteBtn.setAttribute("data-highlight-chapter", chapterName || "");
-            deleteBtn.setAttribute("aria-label", "Remove highlight");
-            deleteBtn.setAttribute("title", "Remove highlight");
-            deleteBtn.textContent = "×";
-            actions.appendChild(deleteBtn);
-
-            mark.appendChild(actions);
-            fragment.appendChild(mark);
+    relevant.forEach(
+      ({
+        text,
+        highlightId,
+        chapter: chapterName,
+        note,
+        color: directColor,
+        label,
+      }) => {
+        if (!text) return;
+        const userHighlight = userHighlights.find((h) => h.id === highlightId);
+        const color = directColor || userHighlight?.color || "#ffeb3b";
+        const highlightLabel = label || userHighlight?.label || "";
+        const walker = document.createTreeWalker(
+          body,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false,
+        );
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.parentElement?.closest("mark.highlight")) continue;
+          if (node.textContent.includes(text)) {
+            textNodes.push(node);
           }
+        }
+
+        textNodes.forEach((textNode) => {
+          const parts = textNode.textContent.split(text);
+          if (parts.length <= 1) return;
+
+          const fragment = document.createDocumentFragment();
+          parts.forEach((part, index) => {
+            fragment.appendChild(document.createTextNode(part));
+            if (index < parts.length - 1) {
+              const mark = document.createElement("mark");
+              mark.className =
+                "highlight rounded-md px-1 py-0.5 box-decoration-clone font-normal";
+              mark.style.backgroundColor = color;
+              mark.appendChild(document.createTextNode(text));
+              if (note) {
+                mark.setAttribute("title", note);
+              }
+
+              const actions = document.createElement("span");
+              actions.className =
+                "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
+
+              const editBtn = document.createElement("button");
+              editBtn.className =
+                "highlight-edit inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
+              editBtn.setAttribute("data-highlight-text", text);
+              editBtn.setAttribute("data-highlight-id", String(highlightId));
+              editBtn.setAttribute("data-highlight-chapter", chapterName || "");
+              editBtn.setAttribute("data-highlight-note", note || "");
+              editBtn.setAttribute("aria-label", "Edit highlight");
+              editBtn.setAttribute("title", "Edit highlight");
+              editBtn.innerHTML = "<ion-icon name='create-outline'></ion-icon>";
+
+              if (!isShared) {
+                actions.appendChild(editBtn);
+              }
+
+              if (note) {
+                const noteBtn = document.createElement("button");
+                noteBtn.className =
+                  "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
+                noteBtn.setAttribute("data-highlight-note", note);
+                noteBtn.setAttribute("data-highlight-text", text);
+                noteBtn.setAttribute(
+                  "data-highlight-chapter",
+                  chapterName || "",
+                );
+                noteBtn.setAttribute("data-highlight-label", highlightLabel);
+                noteBtn.setAttribute("aria-label", "View note");
+                noteBtn.setAttribute("title", "View note");
+                noteBtn.innerHTML =
+                  "<ion-icon name='document-outline'></ion-icon>";
+                actions.appendChild(noteBtn);
+              }
+
+              if (!isShared) {
+                const deleteBtn = document.createElement("button");
+                deleteBtn.className =
+                  "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
+                deleteBtn.setAttribute("data-highlight-text", text);
+                deleteBtn.setAttribute(
+                  "data-highlight-id",
+                  String(highlightId),
+                );
+                deleteBtn.setAttribute(
+                  "data-highlight-chapter",
+                  chapterName || "",
+                );
+                deleteBtn.setAttribute("aria-label", "Remove highlight");
+                deleteBtn.setAttribute("title", "Remove highlight");
+                deleteBtn.textContent = "×";
+                actions.appendChild(deleteBtn);
+              }
+
+              mark.appendChild(actions);
+
+              fragment.appendChild(mark);
+            }
+          });
+          textNode.parentNode.replaceChild(fragment, textNode);
         });
-        textNode.parentNode.replaceChild(fragment, textNode);
-      });
-    });
+      },
+    );
 
     return body.innerHTML;
   };
@@ -230,19 +322,71 @@ export const LearnView = () => {
     };
   }, []);
 
+  const loadSharedLesson = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${API_GET_SHARED_LESSON}/${encodeURIComponent(token)}`,
+        { headers: authHeaders(null) },
+      );
+      const result = await res.json();
+      if (!result.success || !result.data) {
+        showToast({
+          type: "danger",
+          message: String(
+            result.error || "This share link is invalid or has been disabled.",
+          ),
+        });
+        setSharedData(null);
+        return;
+      }
+      const d = result.data;
+      setSharedData(d);
+      setContent(d.content || "");
+      setCoverImagePath(d.coverImagePath || "");
+      setCourseLanguage(d.language || "");
+      setRole(
+        d.access === "owner"
+          ? "owner"
+          : d.access === "collaborator"
+            ? "collaborator"
+            : "viewer",
+      );
+      setHighlights(d.highlights || []);
+      setUserHighlights(d.userHighlights || []);
+      setSharedNotes(d.notes || []);
+    } catch {
+      showToast({
+        type: "danger",
+        message: "Could not load this shared lesson.",
+      });
+      setSharedData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, showToast]);
+
   useEffect(() => {
+    if (isShared) {
+      loadSharedLesson();
+      return;
+    }
+
+    if (!routeTopic) return;
+
     const controller = new AbortController();
     (async () => {
       setLoading(true);
       try {
         const [topicRes, progressRes, subjectsRes, courseSubjectsRes] =
           await Promise.all([
-            fetch(`${API_GET_TOPIC}?name=${encodeURIComponent(topic)}`, {
+            fetch(`${API_GET_TOPIC}?name=${encodeURIComponent(routeTopic)}`, {
               signal: controller.signal,
               headers: authHeaders(),
             }),
             fetch(
-              `${API_GET_READING_PROGRESS}?course=${encodeURIComponent(topic)}`,
+              `${API_GET_READING_PROGRESS}?course=${encodeURIComponent(routeTopic)}`,
               { signal: controller.signal, headers: authHeaders() },
             ),
             fetch(API_GET_SUBJECTS, {
@@ -250,7 +394,7 @@ export const LearnView = () => {
               headers: authHeaders(),
             }),
             fetch(
-              `${API_GET_COURSE_SUBJECTS}?course=${encodeURIComponent(topic)}`,
+              `${API_GET_COURSE_SUBJECTS}?course=${encodeURIComponent(routeTopic)}`,
               { signal: controller.signal, headers: authHeaders() },
             ),
           ]);
@@ -293,7 +437,7 @@ export const LearnView = () => {
         try {
           const [highlightsRes, userHighlightsRes] = await Promise.all([
             fetch(
-              `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(topic)}`,
+              `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(routeTopic)}`,
               { headers: authHeaders() },
             ),
             fetch(API_GET_HIGHLIGHTS, { headers: authHeaders() }),
@@ -323,7 +467,100 @@ export const LearnView = () => {
       }
     })();
     return () => controller.abort();
-  }, [topic]);
+  }, [isShared, loadSharedLesson, routeTopic, showToast, isAuthenticated]);
+
+  const openAuthPrompt = (mode = "login", message = "") => {
+    setAuthMode(mode);
+    setAuthPromptMessage(message);
+    setIsAuthModalOpen(true);
+  };
+
+  const closeAuthPrompt = () => {
+    setIsAuthModalOpen(false);
+  };
+
+  const requireAuth = (actionType = "note") => {
+    if (!isAuthenticated) {
+      const msg =
+        actionType === "note"
+          ? "Log in or create an account to add notes to this lesson."
+          : "Log in or create an account to highlight text.";
+      openAuthPrompt("signup", msg);
+      return false;
+    }
+    return true;
+  };
+
+  const handleAddNote = async () => {
+    if (!requireAuth("note")) return;
+    if (!canOpenInApp) {
+      setShowNoPermissionsModal(true);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API_POST_NOTES}?course=${encodeURIComponent(topic)}`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ body: "" }),
+        },
+      );
+      const result = await res.json();
+      if (!res.ok || !result.success || result.error || result.errors) {
+        throw new Error(
+          result.error || result.errors || "Failed to create note",
+        );
+      }
+      showToast({
+        type: "success",
+        message: "Note added. Open the lesson in your account to edit it.",
+      });
+      if (isShared) {
+        await loadSharedLesson();
+      }
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to create note",
+      });
+    }
+  };
+
+  const handleAbandonPiece = async () => {
+    if (!isAuthenticated || access !== "collaborator") return;
+
+    setIsLeaving(true);
+    try {
+      const res = await fetch(
+        `${API_POST_COURSE_LEAVE}/${encodeURIComponent(topic)}/leave`,
+        {
+          method: "POST",
+          headers: authHeaders(null),
+        },
+      );
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(
+          result.errors || result.error || "Failed to leave lesson",
+        );
+      }
+      showToast({
+        type: "success",
+        message: "You abandoned this piece.",
+      });
+      setShowAbandonModal(false);
+      await loadSharedLesson();
+    } catch (err) {
+      showToast({
+        type: "danger",
+        message: err.message || "Failed to leave lesson",
+      });
+    } finally {
+      setIsLeaving(false);
+    }
+  };
 
   const createImage = async (chapter) => {
     setGenerating((prev) => new Set(prev).add(chapter));
@@ -493,6 +730,12 @@ export const LearnView = () => {
       else next.delete(chapterIndex);
       return next;
     });
+
+    if (isShared && !canOpenInApp) {
+      // Allow reading progress locally for anonymous / non-collaborator readers
+      return;
+    }
+
     try {
       await fetch(API_POST_READING_PROGRESS, {
         method: "POST",
@@ -833,6 +1076,20 @@ export const LearnView = () => {
     // hold x while selecting to copy text without opening the note modal
     if (xKeyHeld.current) return;
 
+    if (isShared) {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+      if (!text) return;
+      if (!isAuthenticated) {
+        requireAuth("highlight");
+        return;
+      }
+      if (!canOpenInApp) {
+        setShowNoPermissionsModal(true);
+        return;
+      }
+    }
+
     const target =
       e.target.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
     if (target.closest(".highlight-delete")) return;
@@ -897,9 +1154,316 @@ export const LearnView = () => {
       const text = noteBtn.getAttribute("data-highlight-text") || "";
       const chapter = noteBtn.getAttribute("data-highlight-chapter") || "";
       const label = noteBtn.getAttribute("data-highlight-label") || "";
+
       setViewingNote({ note, text, chapter, label });
     }
   };
+
+  if (isShared) {
+    const courseNotes = Array.isArray(sharedNotes)
+      ? sharedNotes.filter((n) => (n.body || "").trim())
+      : [];
+    const highlightNotes = (highlights || []).filter((h) =>
+      (h.note || "").trim(),
+    );
+
+    return (
+      <div className='min-h-screen bg-dr-bg p-3 lg:p-6'>
+        <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[100rem] gap-3 lg:gap-4 lg:min-h-[calc(100vh-3rem)]'>
+          {/* LEFT SIDEBAR: Notes Panel */}
+          <aside className='sticky top-3 z-20 hidden h-[90vh] w-[350px] shrink-0 self-start lg:top-6 lg:block'>
+            <div className='flex h-full flex-col gap-4 overflow-y-auto rounded-3xl border border-dr-border p-4 shadow-sm [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+              {/* Branding */}
+              <div className='flex items-center gap-3 rounded-xl border border-dr-border bg-dr-surface p-3 shadow-sm'>
+                <img
+                  src={zapohtehLogo}
+                  alt='Logo'
+                  className='h-8 w-8 rounded-lg object-contain'
+                />
+                <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+                <span className='ml-auto rounded-md bg-dr-accent-light px-2 py-0.5 text-xs font-semibold text-dr-accent'>
+                  Shared
+                </span>
+              </div>
+
+              {/* Add note button */}
+              <button
+                type='button'
+                onClick={handleAddNote}
+                className='flex w-full items-center justify-end gap-2 text-dr-accent hover:opacity-80 transition-opacity font-medium'
+              >
+                <span className='text-lg'>+</span>
+                Add note
+              </button>
+
+              {/* Notes list */}
+              <div className='flex flex-1 flex-col gap-4 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+                {/* Course Notes */}
+                {courseNotes.length > 0 && (
+                  <div className='flex flex-col gap-3'>
+                    <div className='flex items-center justify-between px-1'>
+                      <span className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+                        Course Notes
+                      </span>
+                      <span className='text-xs text-dr-text-muted'>
+                        {courseNotes.length}
+                      </span>
+                    </div>
+                    {courseNotes.map((note, idx) => (
+                      <SharedNoteCard
+                        key={note.id || `${note.updatedAt}-${idx}`}
+                        note={note}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {courseNotes.length === 0 && highlightNotes.length === 0 && (
+                  <p className='py-8 text-center text-xs text-dr-text-muted'>
+                    No notes yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* MAIN BODY AREA */}
+          <div className='flex min-w-0 flex-1 flex-col gap-3 lg:gap-4'>
+            {/* Topbar header */}
+            <header className='flex items-center justify-between gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
+              <div className='flex items-center gap-3 min-w-0'>
+                <h2 className='truncate text-lg font-bold text-dr-text'>
+                  {topic}
+                </h2>
+                {sharedData?.owner && (
+                  <span className='shrink-0 rounded-full bg-dr-surface-light px-2.5 py-0.5 text-xs font-medium text-dr-text-muted'>
+                    by @{sharedData.owner}
+                  </span>
+                )}
+              </div>
+              <span className='text-xs text-dr-text-muted shrink-0'>
+                Shared lesson
+              </span>
+            </header>
+
+            {/* Reading view matching LearnView */}
+            <main className='flex-1 overflow-y-auto lg:rounded-3xl lg:border lg:border-dr-border lg:bg-dr-surface lg:px-8 lg:py-6 lg:shadow-sm'>
+              <div className='flex h-full gap-8 overflow-x-hidden flex-col md:flex-row'>
+                {/* Content column */}
+                <div
+                  ref={sharedContentRef}
+                  onMouseUp={handleTextSelection}
+                  onClick={handleContentClick}
+                  className='min-w-0 flex-1 max-w-[800px] overflow-y-auto'
+                >
+                  {coverImagePath && (
+                    <Thumbnail
+                      src={coverImagePath}
+                      alt={topic}
+                      className='mb-6 h-48 w-full rounded-2xl'
+                    />
+                  )}
+
+                  {intro && (
+                    <div
+                      className='research-content'
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdownWithHighlights(intro),
+                      }}
+                    />
+                  )}
+
+                  {chapters.map((chapter, chapterIndex) => (
+                    <section
+                      key={chapter.title}
+                      id={chapterSlug(chapter.title)}
+                      className='mt-8 scroll-mt-6'
+                    >
+                      <h4 className='mb-2 text-xl font-bold text-blue-500/80'>
+                        {chapter.title}
+                      </h4>
+                      <div
+                        className='research-content'
+                        dangerouslySetInnerHTML={{
+                          __html: renderMarkdownWithHighlights(
+                            chapter.body,
+                            chapter.title,
+                          ),
+                        }}
+                      />
+                      <div className='mb-3 flex items-start justify-between gap-4'>
+                        <div className='flex shrink-0 items-center gap-2'>
+                          <button
+                            type='button'
+                            onClick={() => toggleRead(chapterIndex)}
+                            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                              readChapters.has(chapterIndex)
+                                ? "border-dr-success bg-dr-success/10 text-dr-success"
+                                : "border-dr-border bg-dr-surface text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
+                            }`}
+                          >
+                            <ion-icon
+                              name={
+                                readChapters.has(chapterIndex)
+                                  ? "checkmark-circle"
+                                  : "ellipse-outline"
+                              }
+                            ></ion-icon>
+                            <span>Mark read</span>
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                {/* Right column: Actions & Chapters */}
+                <div className='w-full md:max-w-[320px] md:border-l md:border-dr-border md:pl-4 flex flex-col gap-4'>
+                  <div className='flex flex-col gap-2'>
+                    <Button secondary className='w-full' onClick={downloadPDF}>
+                      <ion-icon name='download-outline'></ion-icon>
+                      <span className='ml-2'>Download PDF</span>
+                    </Button>
+
+                    {access === "collaborator" && (
+                      <Button
+                        danger
+                        className='w-full'
+                        onClick={() => setShowAbandonModal(true)}
+                        isLoading={isLeaving}
+                      >
+                        <ion-icon name='exit-outline'></ion-icon>
+                        <span className='ml-2'>Abandon piece</span>
+                      </Button>
+                    )}
+                  </div>
+
+                  {chapters.length > 0 && (
+                    <div className='rounded-2xl border border-dr-border bg-dr-surface p-4'>
+                      <div className='mb-3 flex items-center justify-between'>
+                        <h3 className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
+                          Chapters
+                        </h3>
+                        <button
+                          type='button'
+                          onClick={() => setIsChaptersOpen((v) => !v)}
+                          className='hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
+                          aria-label={
+                            isChaptersOpen
+                              ? "Collapse chapters"
+                              : "Expand chapters"
+                          }
+                        >
+                          <ion-icon
+                            name={
+                              isChaptersOpen
+                                ? "chevron-up-outline"
+                                : "chevron-down-outline"
+                            }
+                          />
+                        </button>
+                      </div>
+                      <ul
+                        className={`flex flex-col gap-1 ${!isChaptersOpen ? "md:hidden" : ""}`}
+                      >
+                        {chapters.map((chapter) => (
+                          <li key={chapter.title}>
+                            <button
+                              type='button'
+                              onClick={() => scrollToChapter(chapter.title)}
+                              className='flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text'
+                            >
+                              <ion-icon
+                                name='ellipse-outline'
+                                className='shrink-0 text-dr-text-muted'
+                              />
+                              <span className='truncate'>{chapter.title}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+
+        {/* Closable Auth Modal (shown when an anonymous user attempts an action) */}
+        <Modal
+          open={isAuthModalOpen}
+          onClose={closeAuthPrompt}
+          title={authMode === "login" ? "Sign In" : "Create Account"}
+          zIndex={40}
+          closeOnBackdropClick={true}
+          showCloseButton={true}
+        >
+          <div className='flex flex-col gap-4'>
+            {authPromptMessage && (
+              <p className='text-center text-sm text-dr-text-muted'>
+                {authPromptMessage}
+              </p>
+            )}
+            <IfElse condition={authMode === "login"}>
+              <LoginForm />
+              <SignupForm />
+            </IfElse>
+            <Button
+              secondary
+              onClick={() =>
+                setAuthMode((prev) => (prev === "login" ? "signup" : "login"))
+              }
+              className='w-full'
+            >
+              {authMode === "login" ? "Sign Up Instead" : "Sign In Instead"}
+            </Button>
+          </div>
+        </Modal>
+
+        {/* No permissions modal for logged-in users who are not collaborators */}
+        <Modal
+          open={showNoPermissionsModal}
+          onClose={() => setShowNoPermissionsModal(false)}
+          title='No permissions'
+          zIndex={40}
+          closeOnBackdropClick={true}
+          showCloseButton={true}
+        >
+          <div className='flex flex-col items-center gap-4 text-center p-2'>
+            <ion-icon
+              name='lock-closed-outline'
+              className='text-4xl text-dr-accent'
+            ></ion-icon>
+            <p className='text-sm text-dr-text'>
+              You are logged in, but you do not have permissions to modify this
+              lesson. Ask the owner to add you as a collaborator.
+            </p>
+            <Button
+              secondary
+              onClick={() => setShowNoPermissionsModal(false)}
+              className='w-full'
+            >
+              Close
+            </Button>
+          </div>
+        </Modal>
+
+        {/* Abandon piece confirmation */}
+        <ConfirmationModal
+          open={showAbandonModal}
+          onClose={() => setShowAbandonModal(false)}
+          onConfirm={handleAbandonPiece}
+          title='Abandon piece'
+          message='Are you sure you want to abandon collaboration on this lesson? It will no longer appear in your shared courses.'
+          confirmText='Abandon piece'
+          cancelText='Cancel'
+          confirmVariant='danger'
+          isLoading={isLeaving}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className='flex h-full gap-8 overflow-x-hidden'>
@@ -928,7 +1492,7 @@ export const LearnView = () => {
               />
             </div>
           )}
-          {role === "owner" && (
+          {role === "owner" && !isShared && (
             <div className='absolute right-3 top-3 z-10 flex items-center gap-2'>
               <button
                 type='button'
@@ -981,8 +1545,12 @@ export const LearnView = () => {
                 onClick={createCoverImage}
                 disabled={coverImageLoading}
                 className='flex items-center gap-2 rounded-xl border border-dr-border bg-dr-surface px-3 py-2 text-sm font-semibold text-dr-text shadow-sm transition-colors hover:bg-dr-surface-light disabled:opacity-60'
-                aria-label={coverImagePath ? "Recreate cover image" : "Create cover image"}
-                title={coverImagePath ? "Recreate cover image" : "Create cover image"}
+                aria-label={
+                  coverImagePath ? "Recreate cover image" : "Create cover image"
+                }
+                title={
+                  coverImagePath ? "Recreate cover image" : "Create cover image"
+                }
               >
                 {coverImageLoading ? (
                   <Loading size={18} />
@@ -1319,7 +1887,7 @@ export const LearnView = () => {
             {viewingNote?.text && (
               <div className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3'>
                 <p className='text-sm italic text-dr-text'>
-                  "{viewingNote.text}"
+                  &quot;{viewingNote.text}&quot;
                 </p>
               </div>
             )}
@@ -1473,7 +2041,7 @@ export const LearnView = () => {
         </Modal>
       </div>
 
-      <ChatWidget topic={topic} chapters={chapters} />
+      {!isShared && <ChatWidget topic={topic} chapters={chapters} />}
 
       {role === "owner" && (
         <CollaborateModal

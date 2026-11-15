@@ -145,14 +145,15 @@ export const SidebarNav = ({ onClose, showCloseButton = false }) => {
 };
 
 export const Sidebar = ({ onClose, className = "" }) => {
-  const { topic } = useParams();
+  const { topic, token } = useParams();
   const isLearnPage = !!topic;
+  const isSharedPage = !!token;
 
   return (
     <aside
       className={`flex h-full w-full shrink-0 flex-col overflow-hidden ${isLearnPage ? "" : "rounded-3xl border border-dr-border bg-dr-surface shadow-sm"} ${className}`}
     >
-      {isLearnPage ? (
+      {isLearnPage || isSharedPage ? (
         <>
           {/* Mobile close button */}
           {onClose && (

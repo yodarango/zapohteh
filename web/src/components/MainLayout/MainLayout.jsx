@@ -5,6 +5,7 @@ import { Topbar } from "./Topbar/Topbar";
 
 export const MainLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  console.log("{ topic, token }");
 
   return (
     <div className='min-h-screen bg-dr-bg p-3 lg:p-6'>

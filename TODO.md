@@ -2,3 +2,5 @@
 - when I go to create a new course, if i paste a link to webpage but then select PDF and upload a file and start the conversion, the course generated seems to conbine both sources? moreover, it gets created with the title of the URL section but includes the pdf content? Fix this. THe creation must happen for whatever tab I find myself in and incude only that data.
 - ⚠️ Quando elimino un corso sono ridiresso a /courses. Questo e probabilmente corretto ma vorrei che / non mostri i courss ma altre cose, magari stats?
 - You are using emojies for the tabs in the create page. Use the library of icons for the other content and put this in your memories: never use emojies as icons.
+
+# is the creating of a new course a fire and forget where i can navigate to other pages and if I come bakc to create i can see the current progress?
