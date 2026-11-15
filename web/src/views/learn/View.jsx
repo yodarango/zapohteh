@@ -1171,8 +1171,8 @@ export const LearnView = () => {
       <div className='min-h-screen bg-dr-bg p-3 lg:p-6'>
         <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[100rem] gap-3 lg:gap-4 lg:min-h-[calc(100vh-3rem)]'>
           {/* LEFT SIDEBAR: Notes Panel */}
-          <aside className='sticky top-3 z-20 hidden h-[90vh] w-[350px] shrink-0 self-start lg:top-6 lg:block'>
-            <div className='flex h-full flex-col gap-4 overflow-y-auto rounded-3xl border border-dr-border p-4 shadow-sm [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+          <aside className='sticky top-3 hidden h-[90vh] w-[350px] shrink-0 self-start lg:top-6 lg:block'>
+            <div className='flex h-full flex-col gap-4 overflow-y-auto rounded-3xl [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
               {/* Branding */}
               <div className='flex items-center gap-3 rounded-xl border border-dr-border bg-dr-surface p-3 shadow-sm'>
                 <img
@@ -1395,7 +1395,6 @@ export const LearnView = () => {
           open={isAuthModalOpen}
           onClose={closeAuthPrompt}
           title={authMode === "login" ? "Sign In" : "Create Account"}
-          zIndex={40}
           closeOnBackdropClick={true}
           showCloseButton={true}
         >
@@ -1426,7 +1425,6 @@ export const LearnView = () => {
           open={showNoPermissionsModal}
           onClose={() => setShowNoPermissionsModal(false)}
           title='No permissions'
-          zIndex={40}
           closeOnBackdropClick={true}
           showCloseButton={true}
         >

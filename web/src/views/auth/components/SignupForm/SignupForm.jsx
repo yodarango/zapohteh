@@ -282,11 +282,7 @@ export const SignupForm = () => {
         open={showAvatarModal}
         showWaves={false}
       >
-        <AvatarPicker
-          onSave={handleAvatarSave}
-          isLoading={loading}
-          zIndex={20}
-        />
+        <AvatarPicker onSave={handleAvatarSave} isLoading={loading} />
       </Modal>
     </form>
   );
