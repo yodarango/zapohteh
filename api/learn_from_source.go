@@ -153,7 +153,7 @@ func LearnFromSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// derive the lesson title: user provided > discovered in the source > URL
-	// slug, then persist the course row with its language and source badge
+	// slug, then reserve a new course row and folder before writing any content
 	name := strings.TrimSpace(title)
 	if name == "" {
 		name = research.SourceTitle
@@ -168,13 +168,15 @@ func LearnFromSource(w http.ResponseWriter, r *http.Request) {
 	research.Title = name
 	research.Topic = name
 
-	if err := models.SaveCourseLanguage(authUser.Id, name, research.Language); err != nil {
+	if err := models.CreateImportedCourse(authUser.Id, name, research.Language, sourceType); err != nil {
 		sendEvent("error", fmt.Sprintf("%v", err))
 		return
 	}
-	if err := models.SetCourseSource(authUser.Id, name, sourceType); err != nil {
-		sendEvent("error", fmt.Sprintf("%v", err))
-		return
+	if sourceType == models.CourseSourceWeb {
+		if err := research.SaveWebSourceImages(progress); err != nil {
+			sendEvent("error", fmt.Sprintf("%v", err))
+			return
+		}
 	}
 
 	research.OnChapters = func(chapters []string) {

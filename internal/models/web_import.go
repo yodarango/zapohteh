@@ -49,10 +49,9 @@ var imagePlaceholderPattern = regexp.MustCompile(`\[IMAGE_P\d+\]`)
 
 /**************************************************************************************
 * ExtractWebSource fetches a web article, extracts its readable content with
-* go-readability, turns the article HTML into plain text with [IMAGE_N] tokens
-* where images were found and downloads those images. It fills SourceContent,
-* SourceImages and SourceTitle (the article title, used when the user did not
-* provide one). progress reports phases ("start", "text", "images", "done").
+* go-readability and queues images for saving after the final course folder has
+* been reserved. It fills SourceContent and SourceTitle (the article title,
+* used when the user did not provide one).
 **************************************************************************************/
 func (r *Research) ExtractWebSource(rawURL string, progress func(phase, detail string)) error {
 	report := func(phase, detail string) {
@@ -88,14 +87,28 @@ func (r *Research) ExtractWebSource(rawURL string, progress func(phase, detail s
 		return fmt.Errorf("no article content could be extracted from the page")
 	}
 
-	report("images", fmt.Sprintf("downloading %d images", len(images)))
-	content, err = r.downloadWebImages(content, images)
+	r.SourceContent = strings.TrimSpace(content)
+	r.webSourceImages = images
+	r.webSourceHost = parsed.Host
+	return nil
+}
+
+// SaveWebSourceImages downloads the queued images into the reserved course
+// folder and replaces their placeholders in the extracted content.
+func (r *Research) SaveWebSourceImages(progress func(phase, detail string)) error {
+	if progress != nil {
+		progress("images", fmt.Sprintf("downloading %d images", len(r.webSourceImages)))
+	}
+	content, err := r.downloadWebImages(r.SourceContent, r.webSourceImages)
 	if err != nil {
 		return err
 	}
 
 	r.SourceContent = strings.TrimSpace(content)
-	report("done", fmt.Sprintf("%s (%d images)", parsed.Host, len(r.SourceImages)))
+	r.webSourceImages = nil
+	if progress != nil {
+		progress("done", fmt.Sprintf("%s (%d images)", r.webSourceHost, len(r.SourceImages)))
+	}
 	return nil
 }
 

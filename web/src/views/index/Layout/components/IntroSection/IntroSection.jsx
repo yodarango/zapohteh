@@ -12,9 +12,9 @@ import { useAppContext } from "@views/context/appContextProvider";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
-  { value: "low", label: "☕️ Low" },
-  { value: "medium", label: "🧐 Medium" },
-  { value: "high", label: "👨‍🔬 High" },
+  { value: "low", label: "Low", icon: "cafe-outline" },
+  { value: "medium", label: "Medium", icon: "search-outline" },
+  { value: "high", label: "High", icon: "flask-outline" },
 ];
 
 const LANGUAGES = ["English", "Italian", "Spanish", "German"];
@@ -33,9 +33,9 @@ const STEPS = [
 
 // Lesson creation modes: AI research, PDF document import or web article import
 const MODES = [
-  { value: "ai", label: "✨ AI" },
-  { value: "pdf", label: "📄 PDF" },
-  { value: "url", label: "🔗 URL" },
+  { value: "ai", label: "AI", icon: "sparkles-outline" },
+  { value: "pdf", label: "PDF", icon: "document-text-outline" },
+  { value: "url", label: "URL", icon: "link-outline" },
 ];
 
 // Progress steps shown while importing a document or article; AI mode uses STEPS
@@ -49,7 +49,7 @@ const IMPORT_STEPS = [
 export const IntroSection = () => {
   const navigate = useNavigate();
   const { showToast } = useAppContext();
-  const [title, setTitle] = useState("");
+  const [titles, setTitles] = useState({ ai: "", pdf: "", url: "" });
   const [input, setInput] = useState("");
   const [level, setLevel] = useState("medium");
   const [language, setLanguage] = useState("English");
@@ -69,6 +69,8 @@ export const IntroSection = () => {
   const [url, setUrl] = useState("");
   // the selected PDF file is intentionally not persisted to localStorage
   const [pdfFile, setPdfFile] = useState(null);
+  const [isDraggingPDF, setIsDraggingPDF] = useState(false);
+  const title = titles[mode];
 
   const FORM_STATE_KEY = "zapohteh-lesson-form";
 
@@ -78,13 +80,24 @@ export const IntroSection = () => {
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved);
-      if (parsed.title) setTitle(parsed.title);
+      if (parsed.titles && typeof parsed.titles === "object") {
+        setTitles({
+          ai: typeof parsed.titles.ai === "string" ? parsed.titles.ai : "",
+          pdf: typeof parsed.titles.pdf === "string" ? parsed.titles.pdf : "",
+          url: typeof parsed.titles.url === "string" ? parsed.titles.url : "",
+        });
+      } else if (typeof parsed.title === "string") {
+        const savedMode = MODES.some((option) => option.value === parsed.mode)
+          ? parsed.mode
+          : "ai";
+        setTitles((previous) => ({ ...previous, [savedMode]: parsed.title }));
+      }
       if (parsed.input) setInput(parsed.input);
       if (parsed.level) setLevel(parsed.level);
       if (parsed.language) setLanguage(parsed.language);
       if (parsed.writingStyle) setWritingStyle(parsed.writingStyle);
       if (typeof parsed.searchWeb === "boolean") setSearchWeb(parsed.searchWeb);
-      if (parsed.mode) setMode(parsed.mode);
+      if (MODES.some((option) => option.value === parsed.mode)) setMode(parsed.mode);
       if (parsed.url) setUrl(parsed.url);
       if (parsed.selectedSubjects) {
         setSelectedSubjects(new Set(parsed.selectedSubjects));
@@ -97,7 +110,7 @@ export const IntroSection = () => {
   // Persist form state to localStorage whenever it changes
   useEffect(() => {
     const state = {
-      title,
+      titles,
       input,
       level,
       language,
@@ -109,7 +122,7 @@ export const IntroSection = () => {
     };
     localStorage.setItem(FORM_STATE_KEY, JSON.stringify(state));
   }, [
-    title,
+    titles,
     input,
     level,
     language,
@@ -142,6 +155,15 @@ export const IntroSection = () => {
       else next.add(id);
       return next;
     });
+  };
+
+  const selectPDF = (file) => {
+    if (loading || !file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      showToast({ type: "danger", message: "Please choose a PDF file" });
+      return;
+    }
+    setPdfFile(file);
   };
 
   const handleSubmit = async (e) => {
@@ -280,7 +302,7 @@ export const IntroSection = () => {
 
       <div className='lg:rounded-2xl lg:border lg:border-dr-border lg:bg-dr-surface-light lg:p-6'>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
-          <div className='flex flex-col gap-3'>
+          <fieldset disabled={loading} className='flex min-w-0 flex-col gap-3'>
             {/* Lesson source selector */}
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>
@@ -290,7 +312,7 @@ export const IntroSection = () => {
                 {MODES.map((option) => (
                   <label
                     key={option.value}
-                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                    className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
                       mode === option.value
                         ? "border-dr-accent bg-dr-accent-light text-dr-accent"
                         : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
@@ -301,14 +323,10 @@ export const IntroSection = () => {
                       name='lesson-mode'
                       value={option.value}
                       checked={mode === option.value}
-                      onChange={() => {
-                        setMode(option.value);
-                        // the file input is uncontrolled, so drop the stale
-                        // selection when leaving the PDF tab
-                        if (option.value !== "pdf") setPdfFile(null);
-                      }}
+                      onChange={() => setMode(option.value)}
                       className='sr-only'
                     />
+                    <ion-icon name={option.icon} aria-hidden='true' />
                     {option.label}
                   </label>
                 ))}
@@ -319,7 +337,9 @@ export const IntroSection = () => {
                 back to the file name or article title when left empty */}
             <Input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) =>
+                setTitles((previous) => ({ ...previous, [mode]: e.target.value }))
+              }
               placeholder={
                 mode === "ai"
                   ? "TItle for this lesson"
@@ -338,11 +358,40 @@ export const IntroSection = () => {
 
             {mode === "pdf" && (
               <div className='flex flex-col gap-2'>
-                <Input
-                  type='file'
-                  accept='application/pdf'
-                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                />
+                <label
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!loading) setIsDraggingPDF(true);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingPDF(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingPDF(false);
+                    selectPDF(e.dataTransfer.files?.[0]);
+                  }}
+                  className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-5 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-dr-accent/25 ${
+                    loading
+                      ? "cursor-not-allowed border-dr-border text-dr-text-muted opacity-60"
+                      : isDraggingPDF
+                        ? "cursor-pointer border-dr-accent bg-dr-accent-light text-dr-accent"
+                        : "cursor-pointer border-dr-border text-dr-text-muted hover:border-dr-accent"
+                  }`}
+                >
+                  <input
+                    type='file'
+                    accept='application/pdf,.pdf'
+                    disabled={loading}
+                    className='sr-only'
+                    onChange={(e) => {
+                      selectPDF(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                  <ion-icon name='cloud-upload-outline' className='text-2xl' aria-hidden='true' />
+                  <span>Drag and drop a PDF here, or click to choose a file</span>
+                </label>
                 {pdfFile && (
                   <p className='text-xs text-dr-text-muted'>
                     Selected: {pdfFile.name}
@@ -371,7 +420,7 @@ export const IntroSection = () => {
                 {RESEARCH_LEVELS.map((option) => (
                   <label
                     key={option.value}
-                    className={`flex-1 cursor-pointer rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
+                    className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
                       level === option.value
                         ? "border-dr-accent bg-dr-accent-light text-dr-accent"
                         : "border-dr-border text-dr-text-muted hover:border-dr-accent/50"
@@ -385,6 +434,7 @@ export const IntroSection = () => {
                       onChange={() => setLevel(option.value)}
                       className='sr-only'
                     />
+                    <ion-icon name={option.icon} aria-hidden='true' />
                     {option.label}
                   </label>
                 ))}
@@ -519,7 +569,7 @@ export const IntroSection = () => {
                 </div>
               )}
             </div>
-          </div>
+          </fieldset>
           {loading ? (
             <div className='flex items-center justify-center gap-2 py-2.5 text-dr-text-muted animate-pulse'>
               <ion-icon

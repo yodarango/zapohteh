@@ -36,8 +36,8 @@ type Research struct {
 	// SourceType selects the import pipeline: "web" for a URL import or "doc"
 	// for an uploaded document. Empty means a regular AI research.
 	SourceType string `json:"-"`
-	// SourceContent is the text extracted from the import source. Images found
-	// in the source are marked with [IMAGE_N] tokens on their own line.
+	// SourceContent is the text extracted from the import source. Web image
+	// placeholders become [IMAGE_N] tokens after the images are saved.
 	SourceContent string `json:"-"`
 	// SourceImages holds the images extracted from the import source. Each
 	// Token matches an [IMAGE_N] marker in SourceContent.
@@ -45,6 +45,9 @@ type Research struct {
 	// SourceTitle is the title discovered during source extraction (e.g. the
 	// article title of a web page), used when the user did not provide one.
 	SourceTitle string `json:"-"`
+	// webSourceImages are queued until the final course folder is reserved.
+	webSourceImages []webImageRef
+	webSourceHost   string
 
 	// OnChapters is called once the chapter list has been generated.
 	OnChapters func([]string) `json:"-"`

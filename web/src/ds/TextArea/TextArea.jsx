@@ -72,14 +72,13 @@ export const TextArea = ({
   };
 
   const handleKeyDown = (e) => {
-    // check if they are pressing shift plus enter in which case onPressEnter should be called
-    if (e.shiftKey && e.key === "Enter") {
-      e.preventDefault(); // Prevent default new line behavior
-      if (onPressEnter) {
-        onPressEnter(e);
-      }
-      return;
+    // Shift+Enter can be reserved for a caller-provided action; otherwise
+    // preserve the browser's newline behavior and forward keyboard events.
+    if (e.shiftKey && e.key === "Enter" && onPressEnter) {
+      e.preventDefault();
+      onPressEnter(e);
     }
+    rest.onKeyDown?.(e);
   };
 
   const handleChange = (e) => {

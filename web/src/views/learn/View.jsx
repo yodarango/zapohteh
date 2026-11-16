@@ -11,6 +11,7 @@ import {
   Input,
   Select,
   TextArea,
+  Tooltip,
   PopupMenu,
   PopupMenuItem,
   IfElse,
@@ -43,6 +44,7 @@ import {
   // TANJREEN_API_KEY,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
+import { findHighlightMatches } from "./highlightMatches";
 import { ChatWidget } from "./ChatWidget";
 import { CollaborateModal } from "./CollaborateModal";
 import { authHeaders } from "@utils";
@@ -205,35 +207,63 @@ export const LearnView = () => {
           false,
         );
         const textNodes = [];
+        let contentText = "";
+        let previousBlock = null;
         let node;
         while ((node = walker.nextNode())) {
-          if (node.parentElement?.closest("mark.highlight")) continue;
-          if (node.textContent.includes(text)) {
-            textNodes.push(node);
+          if (node.parentElement?.closest("mark.highlight, script, style")) {
+            contentText += "\0";
+            continue;
           }
+          const block = node.parentElement?.closest(
+            "p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th",
+          );
+          if (previousBlock && block !== previousBlock) contentText += "\n";
+          const start = contentText.length;
+          contentText += node.textContent;
+          textNodes.push({ node, start, end: contentText.length });
+          previousBlock = block;
         }
 
-        textNodes.forEach((textNode) => {
-          const parts = textNode.textContent.split(text);
-          if (parts.length <= 1) return;
+        const pieces = [];
+        findHighlightMatches(contentText, text).forEach((ranges) => {
+          const matchPieces = [];
+          ranges.forEach(({ start, end }) => {
+            textNodes.forEach((entry) => {
+              if (entry.start >= end || entry.end <= start) return;
+              matchPieces.push({
+                node: entry.node,
+                start: Math.max(start, entry.start) - entry.start,
+                end: Math.min(end, entry.end) - entry.start,
+              });
+            });
+          });
+          if (matchPieces.length) {
+            matchPieces[matchPieces.length - 1].showActions = true;
+            pieces.push(...matchPieces);
+          }
+        });
 
-          const fragment = document.createDocumentFragment();
-          parts.forEach((part, index) => {
-            fragment.appendChild(document.createTextNode(part));
-            if (index < parts.length - 1) {
-              const mark = document.createElement("mark");
-              mark.className =
-                "highlight rounded-md px-1 py-0.5 box-decoration-clone font-normal";
-              mark.style.backgroundColor = color;
-              mark.appendChild(document.createTextNode(text));
-              if (note) {
-                mark.setAttribute("title", note);
-              }
+        // Process backwards so offsets in each original text node stay valid.
+        pieces
+          .reverse()
+          .forEach(({ node: textNode, start, end, showActions }) => {
+            textNode.splitText(end);
+            const selected = textNode.splitText(start);
+            const mark = document.createElement("mark");
+            mark.className =
+              "highlight rounded-md px-1 py-0.5 box-decoration-clone font-normal";
+            mark.style.backgroundColor = color;
+            selected.parentNode.replaceChild(mark, selected);
+            mark.appendChild(selected);
+            if (note) mark.setAttribute("title", note);
+            if (!showActions) return;
 
-              const actions = document.createElement("span");
-              actions.className =
-                "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
+            const actions = document.createElement("span");
+            actions.className =
+              "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
 
+            if (!isShared) {
               const editBtn = document.createElement("button");
               editBtn.className =
                 "highlight-edit inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
@@ -244,55 +274,42 @@ export const LearnView = () => {
               editBtn.setAttribute("aria-label", "Edit highlight");
               editBtn.setAttribute("title", "Edit highlight");
               editBtn.innerHTML = "<ion-icon name='create-outline'></ion-icon>";
-
-              if (!isShared) {
-                actions.appendChild(editBtn);
-              }
-
-              if (note) {
-                const noteBtn = document.createElement("button");
-                noteBtn.className =
-                  "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
-                noteBtn.setAttribute("data-highlight-note", note);
-                noteBtn.setAttribute("data-highlight-text", text);
-                noteBtn.setAttribute(
-                  "data-highlight-chapter",
-                  chapterName || "",
-                );
-                noteBtn.setAttribute("data-highlight-label", highlightLabel);
-                noteBtn.setAttribute("aria-label", "View note");
-                noteBtn.setAttribute("title", "View note");
-                noteBtn.innerHTML =
-                  "<ion-icon name='document-outline'></ion-icon>";
-                actions.appendChild(noteBtn);
-              }
-
-              if (!isShared) {
-                const deleteBtn = document.createElement("button");
-                deleteBtn.className =
-                  "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
-                deleteBtn.setAttribute("data-highlight-text", text);
-                deleteBtn.setAttribute(
-                  "data-highlight-id",
-                  String(highlightId),
-                );
-                deleteBtn.setAttribute(
-                  "data-highlight-chapter",
-                  chapterName || "",
-                );
-                deleteBtn.setAttribute("aria-label", "Remove highlight");
-                deleteBtn.setAttribute("title", "Remove highlight");
-                deleteBtn.textContent = "×";
-                actions.appendChild(deleteBtn);
-              }
-
-              mark.appendChild(actions);
-
-              fragment.appendChild(mark);
+              actions.appendChild(editBtn);
             }
+
+            if (note) {
+              const noteBtn = document.createElement("button");
+              noteBtn.className =
+                "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
+              noteBtn.setAttribute("data-highlight-note", note);
+              noteBtn.setAttribute("data-highlight-text", text);
+              noteBtn.setAttribute("data-highlight-chapter", chapterName || "");
+              noteBtn.setAttribute("data-highlight-label", highlightLabel);
+              noteBtn.setAttribute("aria-label", "View note");
+              noteBtn.setAttribute("title", "View note");
+              noteBtn.innerHTML =
+                "<ion-icon name='document-outline'></ion-icon>";
+              actions.appendChild(noteBtn);
+            }
+
+            if (!isShared) {
+              const deleteBtn = document.createElement("button");
+              deleteBtn.className =
+                "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
+              deleteBtn.setAttribute("data-highlight-text", text);
+              deleteBtn.setAttribute("data-highlight-id", String(highlightId));
+              deleteBtn.setAttribute(
+                "data-highlight-chapter",
+                chapterName || "",
+              );
+              deleteBtn.setAttribute("aria-label", "Remove highlight");
+              deleteBtn.setAttribute("title", "Remove highlight");
+              deleteBtn.textContent = "×";
+              actions.appendChild(deleteBtn);
+            }
+
+            mark.appendChild(actions);
           });
-          textNode.parentNode.replaceChild(fragment, textNode);
-        });
       },
     );
 
@@ -1459,6 +1476,39 @@ export const LearnView = () => {
           confirmVariant='danger'
           isLoading={isLeaving}
         />
+
+        {/* Highlight note detail modal (available to everyone on shared links) */}
+        <Modal
+          open={viewingNote != null}
+          onClose={() => setViewingNote(null)}
+          title={viewingNote?.label ? `Note: ${viewingNote.label}` : "Note"}
+          zIndex={30}
+        >
+          <div className='flex flex-col gap-4'>
+            {viewingNote?.chapter && (
+              <p className='text-xs font-medium text-dr-text-muted'>
+                {viewingNote.chapter}
+              </p>
+            )}
+            {viewingNote?.text && (
+              <div className='rounded-xl border-l-4 border-dr-accent bg-dr-surface-light p-3'>
+                <p className='text-sm italic text-dr-text'>
+                  &quot;{viewingNote.text}&quot;
+                </p>
+              </div>
+            )}
+            <div className='rounded-xl bg-dr-surface-light p-3'>
+              <p className='text-sm text-dr-text'>
+                {viewingNote?.note || "No note"}
+              </p>
+            </div>
+            <div className='flex justify-end'>
+              <Button secondary onClick={() => setViewingNote(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }
@@ -1661,9 +1711,12 @@ export const LearnView = () => {
             onClick={cancelPendingHighlight}
           />
           <div className='relative z-10 w-[90vw] max-w-[60rem] max-h-[90vh] overflow-y-auto rounded-2xl bg-dr-surface p-6 shadow-lg'>
-            <div className='mb-6 flex items-center justify-between px-4'>
-              <h4 className='text-xl font-bold'>
+            <div className='relative z-20 mb-6 flex items-center justify-between px-4'>
+              <h4 className='flex items-center gap-2 text-xl font-bold'>
                 {editingHighlight ? "Edit highlight" : "Highlight"}
+                <Tooltip label='How to use ellipses in highlights'>
+                  Use ... between excerpts to avoid highlighting the entire text
+                </Tooltip>
               </h4>
               <button
                 type='button'

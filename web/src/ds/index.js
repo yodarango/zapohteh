@@ -5,6 +5,7 @@ export { SimpleGrid } from "./SimpleGrid/SimpleGrid";
 export { Thumbnail } from "./Thumbnail/Thumbnail";
 export { Confetti } from "./Confetti/Confetti";
 export { TextArea } from "./TextArea/TextArea";
+export { Tooltip } from "./Tooltip/Tooltip";
 export { Portal } from "./Portal/Portal";
 export { Switch } from "./Switch/Switch";
 export { Button } from "./Button/Button";

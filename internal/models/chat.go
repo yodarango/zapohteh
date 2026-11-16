@@ -151,6 +151,21 @@ func truncate(text string, maxLen int) string {
 	return string(runes[:maxLen]) + "..."
 }
 
+func buildChapterChatSystemPrompt(title, chapter, chapterBody, recentConversation string, first bool) string {
+	base := fmt.Sprintf(
+		"You are a helpful tutor for the lesson \"%s\". The user is asking about the chapter \"%s\". Here is the chapter text:\n\n%s\n\n",
+		title, chapter, truncate(chapterBody, 4000),
+	)
+	if first {
+		return base + "Answer the user's question using the chapter."
+	}
+
+	return base + fmt.Sprintf(
+		"Here is the recent conversation (most recent last):\n\n%s\n\nThe user is following up. Answer the next question while staying consistent with the chapter.",
+		recentConversation,
+	)
+}
+
 // buildChatPrompt creates the system prompt and user prompt for the AI tutor. The
 // lesson content is read from the owner's folder while the conversation history is
 // scoped to the asking user, since each participant keeps their own chat thread.
@@ -169,29 +184,20 @@ func buildChatPrompt(ownerId, userId uint, courseId int, courseTitle, chapter, q
 			first = true
 		}
 
-		if first {
-			system := fmt.Sprintf(
-				"You are a helpful tutor for the lesson \"%s\". The user is asking about the chapter \"%s\". Here is the chapter text:\n\n%s\n\nAnswer the user's question using the chapter.",
-				title, chapter, truncate(chapterBody, 4000),
-			)
-			return system, question
-		}
-
-		users, _ := GetChatMessagesByChapter(userId, courseId, chapter, "user", 3)
-		assistants, _ := GetChatMessagesByChapter(userId, courseId, chapter, "assistant", 3)
-
 		var thread strings.Builder
-		for _, m := range users {
-			fmt.Fprintf(&thread, "User: %s\n", m.Content)
-		}
-		for _, m := range assistants {
-			fmt.Fprintf(&thread, "AI: %s\n", m.Content)
+		if !first {
+			users, _ := GetChatMessagesByChapter(userId, courseId, chapter, "user", 3)
+			assistants, _ := GetChatMessagesByChapter(userId, courseId, chapter, "assistant", 3)
+
+			for _, m := range users {
+				fmt.Fprintf(&thread, "User: %s\n", m.Content)
+			}
+			for _, m := range assistants {
+				fmt.Fprintf(&thread, "AI: %s\n", m.Content)
+			}
 		}
 
-		system := fmt.Sprintf(
-			"You are continuing a discussion about the chapter \"%s\" from the lesson \"%s\". Here is the recent conversation (most recent last):\n\n%s\n\nThe user is following up. Answer the next question while staying consistent with the chapter.",
-			chapter, title, thread.String(),
-		)
+		system := buildChapterChatSystemPrompt(title, chapter, chapterBody, thread.String(), first)
 		return system, question
 	}
 

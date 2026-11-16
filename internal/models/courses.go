@@ -34,6 +34,85 @@ type CourseDB struct {
 	CompletedAt             *time.Time `json:"completedAt"`
 }
 
+// CreateImportedCourse reserves a new database row and folder without reusing an
+// existing course. The transaction serializes competing database insertions;
+// Mkdir also protects legacy folders that have no database row.
+func CreateImportedCourse(userId uint, title, language, source string) error {
+	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
+		return fmt.Errorf("database is not available")
+	}
+	if title == "" || utils.SanitizeFilename(title) != title {
+		return fmt.Errorf("invalid course title")
+	}
+	if source != CourseSourceWeb && source != CourseSourceDoc {
+		return fmt.Errorf("invalid import source: %q", source)
+	}
+
+	collision := fmt.Errorf("a lesson with this title already exists; please choose another title")
+	tx, err := ModelsRepo.DB.Conn.Begin()
+	if err != nil {
+		return fmt.Errorf("could not start course reservation: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		INSERT INTO courses (user_id, title, language, source)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, title) DO NOTHING
+	`, userId, title, language, source)
+	if err != nil {
+		return fmt.Errorf("could not create imported lesson: %w", err)
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("could not confirm imported lesson reservation: %w", err)
+	}
+	if inserted == 0 {
+		return collision
+	}
+
+	// Older rows can have titles that map to the same sanitized folder name.
+	rows, err := tx.Query("SELECT title FROM courses WHERE user_id = ? AND title <> ?", userId, title)
+	if err != nil {
+		return fmt.Errorf("could not check existing lesson titles: %w", err)
+	}
+	for rows.Next() {
+		var existingTitle string
+		if err := rows.Scan(&existingTitle); err != nil {
+			rows.Close()
+			return fmt.Errorf("could not check existing lesson titles: %w", err)
+		}
+		if strings.EqualFold(utils.SanitizeFilename(existingTitle), title) {
+			rows.Close()
+			return collision
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("could not check existing lesson titles: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("could not check existing lesson titles: %w", err)
+	}
+
+	userDir := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId))
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return fmt.Errorf("could not create user content folder: %w", err)
+	}
+	if err := os.Mkdir(filepath.Join(userDir, title), 0755); err != nil {
+		if os.IsExist(err) {
+			return collision
+		}
+		return fmt.Errorf("could not reserve lesson folder: %w", err)
+	}
+	// On commit failure, leave the reserved folder untouched rather than risk
+	// deleting data that another process may have placed there.
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("could not commit imported lesson reservation: %w", err)
+	}
+	return nil
+}
+
 // EnsureCourse creates a course row for a user if it does not already exist and
 // returns the course id.
 func EnsureCourse(userId uint, title string) (int, error) {

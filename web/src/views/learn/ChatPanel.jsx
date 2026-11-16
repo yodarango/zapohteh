@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { marked } from "marked";
-import { Button, Select } from "@ds";
+import { Button, Select, TextArea } from "@ds";
 import { API_GET_CHAT, API_POST_CHAT } from "@constants";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -142,7 +142,7 @@ export const ChatPanel = ({ topic, chapters }) => {
             ]}
           />
         </div>
-        <textarea
+        <TextArea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -152,8 +152,9 @@ export const ChatPanel = ({ topic, chapters }) => {
             }
           }}
           placeholder='Ask a question...'
-          rows={1}
-          className='w-full resize-none overflow-hidden rounded-xl border border-dr-border bg-dr-surface px-4 py-3 pb-4 text-sm text-dr-text outline-none transition-colors placeholder:text-dr-text-muted focus:border-dr-accent focus:ring-2 focus:ring-dr-accent/25'
+          minRows={1}
+          maxHeight={160}
+          className='text-sm'
         />
         <Button primary className='w-full' onClick={send} isLoading={loading}>
           Send
