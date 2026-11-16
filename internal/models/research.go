@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"zapohteh/internal/lib"
 	"zapohteh/internal/utils"
@@ -204,20 +205,21 @@ func ListCourses(userId uint) ([]Course, error) {
 		}
 	}
 
-	readCounts := make(map[string]int)
+	readIndices := make(map[string][]int)
 	lastReadAts := make(map[string]*time.Time)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT course_title, COUNT(*) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
+			"SELECT course_title, chapter_index FROM reading_progress WHERE user_id = ? AND read = 1",
 			userId,
 		)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var title string
-				var count int
-				if err := rows.Scan(&title, &count); err == nil {
-					readCounts[utils.SanitizeFilename(title)] = count
+				var index int
+				if err := rows.Scan(&title, &index); err == nil {
+					key := utils.SanitizeFilename(title)
+					readIndices[key] = append(readIndices[key], index)
 				}
 			}
 		}
@@ -252,7 +254,16 @@ func ListCourses(userId uint) ([]Course, error) {
 			continue
 		}
 		name := entry.Name()
-		total := countChapters(filepath.Join(userDir, name))
+		research := Research{UserID: userId, Title: name}
+		total := research.countVisibleChapters()
+		readCount := countVisibleReadChapters(readIndices[name], total)
+		completedAt := completedAts[name]
+		if total == 0 || readCount != total {
+			completedAt = nil
+		} else if completedAt == nil {
+			// Older completion timestamps may be missing because the chapter counts differed.
+			completedAt = lastReadAts[name]
+		}
 		source := sources[name]
 		if source == "" {
 			source = CourseSourceAI
@@ -264,11 +275,11 @@ func ListCourses(userId uint) ([]Course, error) {
 			Language:       languages[name],
 			Source:         source,
 			TotalChapters:  total,
-			ReadChapters:   readCounts[name],
+			ReadChapters:   readCount,
 			Subjects:       subjectMap[name],
 			CreatedAt:      createdAts[name],
 			LastReadAt:     lastReadAts[name],
-			CompletedAt:    completedAts[name],
+			CompletedAt:    completedAt,
 		})
 	}
 
@@ -1253,6 +1264,15 @@ func SaveReadingProgress(userId uint, courseTitle string, chapterIndex int, read
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
+	ownerId, _, role, err := ResolveCourseAccess(userId, courseTitle)
+	if err != nil {
+		return err
+	}
+	research := Research{UserID: ownerId, Title: courseTitle}
+	total := research.countVisibleChapters()
+	if chapterIndex < 0 || chapterIndex >= total {
+		return fmt.Errorf("chapter not found")
+	}
 	query := `
 		INSERT INTO reading_progress (user_id, course_title, chapter_index, read)
 		VALUES (?, ?, ?, ?)
@@ -1268,14 +1288,15 @@ func SaveReadingProgress(userId uint, courseTitle string, chapterIndex int, read
 		return err
 	}
 
-	// Update the course completion timestamp based on the current reading state.
-	folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", userId), utils.SanitizeFilename(courseTitle))
-	total := countChapters(folder)
+	// A collaborator's progress must not change the owner's completion timestamp.
+	if role != CourseRoleOwner {
+		return nil
+	}
 
 	var readCount int
-	err := ModelsRepo.DB.Conn.QueryRow(
-		"SELECT COUNT(*) FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1",
-		userId, courseTitle,
+	err = ModelsRepo.DB.Conn.QueryRow(
+		"SELECT COUNT(*) FROM reading_progress WHERE user_id = ? AND course_title = ? AND read = 1 AND chapter_index >= 0 AND chapter_index < ?",
+		userId, courseTitle, total,
 	).Scan(&readCount)
 	if err != nil {
 		return err
@@ -1296,21 +1317,35 @@ func SaveReadingProgress(userId uint, courseTitle string, chapterIndex int, read
 	return err
 }
 
-/**************************************************************************************
-* countChapters reads the chapters file for a course and returns the number of chapters.
-**************************************************************************************/
-func countChapters(folder string) int {
-	data, err := os.ReadFile(filepath.Join(folder, chaptersFileName))
+// countVisibleChapters follows the same level-two heading rule as splitChapters
+// in the lesson view, including headings inside generated chapter content.
+func (r *Research) countVisibleChapters() int {
+	content, err := r.ReadContent()
 	if err != nil {
 		return 0
 	}
 	count := 0
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) != "" {
-			count++
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "##") {
+			for _, character := range line[2:] {
+				if unicode.IsSpace(character) {
+					count++
+				}
+				break
+			}
 		}
 	}
 	return count
+}
+
+func countVisibleReadChapters(indices []int, total int) int {
+	seen := make(map[int]struct{})
+	for _, index := range indices {
+		if index >= 0 && index < total {
+			seen[index] = struct{}{}
+		}
+	}
+	return len(seen)
 }
 
 /**************************************************************************************

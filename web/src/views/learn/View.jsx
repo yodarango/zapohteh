@@ -754,7 +754,7 @@ export const LearnView = () => {
     }
 
     try {
-      await fetch(API_POST_READING_PROGRESS, {
+      const response = await fetch(API_POST_READING_PROGRESS, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -763,6 +763,10 @@ export const LearnView = () => {
           read: nextRead,
         }),
       });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.errors || "Failed to save reading progress");
+      }
       showToast({
         type: "success",
         message: nextRead ? "Marked as read" : "Marked as unread",
@@ -845,8 +849,9 @@ export const LearnView = () => {
     }
   };
 
+  const visibleReadCount = chapters.filter((_, index) => readChapters.has(index)).length;
   const progress = chapters.length
-    ? Math.round((readChapters.size / chapters.length) * 100)
+    ? Math.round((visibleReadCount / chapters.length) * 100)
     : 0;
 
   const backendOrigin = API_BASE.startsWith("http")
@@ -1617,7 +1622,7 @@ export const LearnView = () => {
                 Reading progress
               </span>
               <span className='text-dr-text-muted'>
-                {readChapters.size} of {chapters.length} chapters ({progress}%)
+                {visibleReadCount} of {chapters.length} chapters ({progress}%)
               </span>
             </div>
             <div className='h-2 w-full overflow-hidden rounded-full bg-dr-border'>

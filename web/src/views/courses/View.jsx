@@ -119,7 +119,7 @@ const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
 
         <span>
           Last read:{" "}
-          {course.lastReadAt && !course.completedAt
+          {course.lastReadAt
             ? formatLocalTime(course.lastReadAt)
             : "Not started"}
         </span>

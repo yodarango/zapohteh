@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -442,23 +441,26 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 	defer collabRows.Close()
 
 	// reading progress of the viewing user, keyed by course title
-	readCounts := make(map[string]int)
+	readIndices := make(map[string][]int)
 	lastReadAts := make(map[string]*time.Time)
 	progRows, err := ModelsRepo.DB.Conn.Query(
-		"SELECT course_title, COUNT(*), MAX(updated_at) FROM reading_progress WHERE user_id = ? AND read = 1 GROUP BY course_title",
+		"SELECT course_title, chapter_index, CAST(updated_at AS TEXT) FROM reading_progress WHERE user_id = ? AND read = 1",
 		userId,
 	)
 	if err == nil {
 		defer progRows.Close()
 		for progRows.Next() {
 			var title string
-			var count int
+			var index int
 			var lastRead sql.NullString
-			if err := progRows.Scan(&title, &count, &lastRead); err == nil {
-				readCounts[title] = count
+			if err := progRows.Scan(&title, &index, &lastRead); err == nil {
+				title = utils.SanitizeFilename(title)
+				readIndices[title] = append(readIndices[title], index)
 				if lastRead.Valid {
 					if t, err := time.Parse("2006-01-02 15:04:05", lastRead.String); err == nil {
-						lastReadAts[title] = &t
+						if lastReadAts[title] == nil || t.After(*lastReadAts[title]) {
+							lastReadAts[title] = &t
+						}
 					}
 				}
 			}
@@ -480,7 +482,13 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 		}
 
 		folderName := utils.SanitizeFilename(title)
-		folder := filepath.Join(utils.ContentDir(), fmt.Sprintf("user_%d", ownerId), folderName)
+		research := Research{UserID: ownerId, Title: title}
+		total := research.countVisibleChapters()
+		readCount := countVisibleReadChapters(readIndices[folderName], total)
+		var completedAt *time.Time
+		if total > 0 && readCount == total {
+			completedAt = lastReadAts[folderName]
+		}
 
 		src := source.String
 		if src == "" {
@@ -493,10 +501,11 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 			CoverImagePath: cover.String,
 			Language:       language.String,
 			Source:         src,
-			TotalChapters:  countChapters(folder),
-			ReadChapters:   readCounts[title],
+			TotalChapters:  total,
+			ReadChapters:   readCount,
 			CreatedAt:      createdAt,
-			LastReadAt:     lastReadAts[title],
+			LastReadAt:     lastReadAts[folderName],
+			CompletedAt:    completedAt,
 			Role:           CourseRoleCollaborator,
 			Owner:          ownerName,
 		})
