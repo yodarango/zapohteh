@@ -52,6 +52,9 @@ var imageTokenPattern = regexp.MustCompile(`\[IMAGE_\d+\]`)
 // markdownHeadingPattern matches markdown-style headings (# …) in source text.
 var markdownHeadingPattern = regexp.MustCompile(`^#{1,6}\s+`)
 
+// Imported chapter boundaries match the level-two headings used by the lesson view.
+var importedChapterHeadingPattern = regexp.MustCompile(`^##[\t ]+(.*)$`)
+
 // numberedHeadingPattern matches lines like "Chapter 3" or "Part II".
 var numberedHeadingPattern = regexp.MustCompile(`(?i)^(chapter|part|section)\s+[\divxlc]+\b`)
 
@@ -69,40 +72,84 @@ func (r *Research) importContentInstructions() string {
 }
 
 /**************************************************************************************
-* runImport executes the import pipeline: chapters are planned from the extracted
-* source content, then each chapter is written by restructuring its assigned source
-* sections, and finally a cover image is generated like any other course.
+* runImport saves extracted source content directly, without generating or rewriting it.
 **************************************************************************************/
 func (r *Research) runImport() error {
 	if strings.TrimSpace(r.SourceContent) == "" {
 		return fmt.Errorf("no content could be extracted from the source")
 	}
 
-	err := r.GenerateChaptersFromContent()
-	if err != nil {
+	// Keep everything before the first heading as an introductory chapter. If
+	// there are no chapter headings, keep the source together as one chapter.
+	var sections []sourceSection
+	var current *sourceSection
+	var body strings.Builder
+	sawHeading := false
+	flush := func() {
+		if current != nil {
+			current.Text = strings.TrimSpace(body.String())
+			sections = append(sections, *current)
+		}
+		body.Reset()
+	}
+	for _, line := range strings.Split(r.SourceContent, "\n") {
+		if match := importedChapterHeadingPattern.FindStringSubmatch(line); match != nil {
+			sawHeading = true
+			flush()
+			title := strings.TrimSpace(match[1])
+			if title == "" {
+				title = fmt.Sprintf("Section %d", len(sections)+1)
+			}
+			current = &sourceSection{Heading: title}
+			continue
+		}
+		if current == nil && strings.TrimSpace(line) != "" {
+			current = &sourceSection{Heading: "Introduction"}
+		}
+		if current != nil {
+			body.WriteString(line)
+			body.WriteByte('\n')
+		}
+	}
+	flush()
+	if len(sections) == 0 {
+		return fmt.Errorf("no content could be extracted from the source")
+	}
+	if !sawHeading {
+		sections[0].Heading = "Content"
+	}
+
+	r.Chapters = make([]string, len(sections))
+	for i, section := range sections {
+		r.Chapters[i] = section.Heading
+	}
+	if err := r.WriteChaptersFile(); err != nil {
 		return err
 	}
 
-	err = r.WriteChaptersFile()
-	if err != nil {
-		return err
-	}
-
-	// notify listeners about the generated chapter list
 	if r.OnChapters != nil {
 		r.OnChapters(r.Chapters)
 	}
 
-	err = r.ElaborateChaptersFromContent()
-	if err != nil {
-		return err
+	chapterLines := append([]string(nil), r.Chapters...)
+	for i, section := range sections {
+		content := section.Text
+		for _, img := range r.SourceImages {
+			alt := strings.ReplaceAll(img.Alt, "]", "")
+			content = strings.ReplaceAll(content, img.Token, fmt.Sprintf("![%s](%s)", alt, img.WebPath))
+		}
+		chapterFile := filepath.Join(r.folderPath(), fmt.Sprintf("%d_imported.md", i+1))
+		if err := os.WriteFile(chapterFile, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write chapter file: %w", err)
+		}
+		chapterLines[i] = donePrefix + section.Heading
 	}
-
-	// Cover image generation is best-effort, same as the AI pipeline: failures
-	// are reported to the UI but do not fail the lesson.
-	if err := r.GenerateCoverImage(); err != nil {
-		if r.OnCoverImage != nil {
-			r.OnCoverImage("error", err.Error())
+	if err := os.WriteFile(filepath.Join(r.folderPath(), chaptersFileName), []byte(strings.Join(chapterLines, "\n")), 0644); err != nil {
+		return fmt.Errorf("failed to update chapters file: %w", err)
+	}
+	if r.OnChapterDone != nil {
+		for _, section := range sections {
+			r.OnChapterDone(section.Heading)
 		}
 	}
 

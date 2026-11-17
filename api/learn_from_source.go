@@ -22,8 +22,8 @@ const maxSourceUploadSize = 25 << 20 // 25 MB
 /************************************************************************
 * Handles a lesson import request: an uploaded PDF document
 * (multipart/form-data with a "file" field) or a web article URL (JSON body
-* with a "url" field). The source content is extracted, reorganized into
-* chapters by the AI and progress is streamed back with Server-Sent Events.
+* with a "url" field). The extracted content is saved directly and progress is
+* streamed back with Server-Sent Events.
 *********************************************************************/
 func LearnFromSource(w http.ResponseWriter, r *http.Request) {
 	authUser, ok := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
@@ -185,10 +185,6 @@ func LearnFromSource(w http.ResponseWriter, r *http.Request) {
 	research.OnChapterDone = func(chapter string) {
 		sendEvent("chapterDone", chapter)
 	}
-	research.OnCoverImage = func(phase string, data string) {
-		sendEvent("coverImage", map[string]string{"phase": phase, "data": data})
-	}
-
 	if err := research.Run(); err != nil {
 		sendEvent("error", fmt.Sprintf("%v", err))
 		return

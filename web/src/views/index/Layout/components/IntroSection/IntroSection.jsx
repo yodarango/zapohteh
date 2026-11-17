@@ -41,9 +41,7 @@ const MODES = [
 // Progress steps shown while importing a document or article; AI mode uses STEPS
 const IMPORT_STEPS = [
   { label: "Extract Content", key: "extract" },
-  { label: "Craft Chapters", key: "chapters" },
-  { label: "Build Chapters", key: "research" },
-  { label: "Create Thumbnail", key: "thumbnail" },
+  { label: "Save Lesson", key: "save" },
 ];
 
 export const IntroSection = () => {
@@ -210,18 +208,18 @@ export const IntroSection = () => {
         setExtractDetail(parsed.detail || parsed.phase);
       } else if (event === "chapters") {
         setChapters(parsed);
-        setCurrentStep(isImport ? 2 : 1);
+        setCurrentStep(1);
       } else if (event === "chapterDone") {
         setCompleted((prev) => [...prev, parsed]);
-      } else if (event === "coverImage") {
-        setCurrentStep(isImport ? 3 : 2);
+      } else if (event === "coverImage" && !isImport) {
+        setCurrentStep(2);
         if (parsed.phase === "error") {
           setThumbnailError(true);
         }
       } else if (event === "done") {
         setTopic(parsed.topic);
         setFinished(true);
-        setCurrentStep(isImport ? 4 : 3);
+        setCurrentStep(isImport ? 2 : 3);
         localStorage.removeItem(FORM_STATE_KEY);
         showToast({
           type: "success",
@@ -286,9 +284,9 @@ export const IntroSection = () => {
     }
   };
 
-  // imports (PDF/URL) get an extra extraction step before chapter crafting
+  // Imports save source content directly; AI research has its own progress steps.
   const steps = mode === "ai" ? STEPS : IMPORT_STEPS;
-  const thumbnailStepIndex = steps.length - 1;
+  const thumbnailStepIndex = STEPS.length - 1;
 
   return (
     <section>
@@ -444,7 +442,14 @@ export const IntroSection = () => {
 
             {/* Language selector */}
             <div className='flex flex-col gap-2'>
-              <span className='text-sm font-medium text-dr-text'>Language</span>
+              <span className='text-sm font-medium text-dr-text'>
+                {mode === "ai" ? "Language" : "Source language"}
+              </span>
+              {mode !== "ai" && (
+                <p className='text-xs text-dr-text-muted'>
+                  Imported content keeps its original language; it is not translated.
+                </p>
+              )}
               <div className='flex flex-wrap gap-3'>
                 {LANGUAGES.map((option) => (
                   <label
@@ -469,8 +474,7 @@ export const IntroSection = () => {
               </div>
             </div>
 
-            {/* Writing style selector (AI research only — imports carry the
-                source text over exactly, translating only when needed) */}
+            {/* Writing style applies only to AI research. */}
             {mode === "ai" && (
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>
@@ -589,7 +593,7 @@ export const IntroSection = () => {
           )}
         </form>
 
-        {/* Timeline of the research pipeline */}
+        {/* Timeline of lesson creation */}
         {currentStep !== null && (
           <div className='relative mt-6'>
             <div className='absolute left-0 right-0 top-4 flex px-4'>
@@ -608,7 +612,7 @@ export const IntroSection = () => {
               {steps.map((step, index) => {
                 const isActive = index === currentStep;
                 const isCompleted = index < currentStep;
-                const isError = thumbnailError && index === thumbnailStepIndex;
+                const isError = mode === "ai" && thumbnailError && index === thumbnailStepIndex;
                 return (
                   <div
                     key={step.key}
@@ -646,7 +650,7 @@ export const IntroSection = () => {
                 );
               })}
             </div>
-            {thumbnailError && (
+            {mode === "ai" && thumbnailError && (
               <p className='mt-3 text-center text-xs font-medium text-dr-danger'>
                 Could not create the thumbnail. You can try again later.
               </p>
@@ -655,14 +659,14 @@ export const IntroSection = () => {
         )}
 
         {/* Live detail line while an import is extracting (e.g. "page 3 of 12") */}
-        {loading && mode !== "ai" && extractDetail && (
+        {loading && mode !== "ai" && currentStep === 0 && extractDetail && (
           <p className='mt-3 text-center text-xs text-dr-text-muted'>
             {extractDetail}
           </p>
         )}
 
         {/* Progress of each chapter as it gets completed */}
-        {chapters.length > 0 && (
+        {mode === "ai" && chapters.length > 0 && (
           <ul className='mt-6 flex flex-col gap-2 text-left'>
             {chapters.map((chapter) => {
               const isDone = completed.includes(chapter);

@@ -642,12 +642,18 @@ func chapterIndexFromFile(folder, chapter string) int {
 
 // chapterFilePath returns the path to a chapter's markdown file. Files are named
 // with a 1-based numeric prefix to avoid collisions when two chapters share the
-// same title (e.g. 1_introduction.md). If the numbered file does not exist, it
-// falls back to the legacy camelCase filename for backwards compatibility.
+// same title (e.g. 1_introduction.md). Direct imports use numbered filenames;
+// older courses can also fall back to the legacy camelCase filename.
 func chapterFilePath(folder, chapter string, index int) string {
 	numbered := filepath.Join(folder, fmt.Sprintf("%d_%s.md", index, utils.ToCamelCase(chapter)))
 	if _, err := os.Stat(numbered); err == nil {
 		return numbered
+	}
+	// Direct imports use an index-only filename so even very long source
+	// headings remain intact without exceeding filesystem filename limits.
+	imported := filepath.Join(folder, fmt.Sprintf("%d_imported.md", index))
+	if _, err := os.Stat(imported); err == nil {
+		return imported
 	}
 	return filepath.Join(folder, utils.ToCamelCase(chapter)+".md")
 }
