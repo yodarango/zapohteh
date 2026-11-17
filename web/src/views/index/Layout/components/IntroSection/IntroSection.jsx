@@ -42,6 +42,7 @@ const MODES = [
 const IMPORT_STEPS = [
   { label: "Extract Content", key: "extract" },
   { label: "Save Lesson", key: "save" },
+  { label: "Create Thumbnail", key: "thumbnail" },
 ];
 
 export const IntroSection = () => {
@@ -211,7 +212,7 @@ export const IntroSection = () => {
         setCurrentStep(1);
       } else if (event === "chapterDone") {
         setCompleted((prev) => [...prev, parsed]);
-      } else if (event === "coverImage" && !isImport) {
+      } else if (event === "coverImage") {
         setCurrentStep(2);
         if (parsed.phase === "error") {
           setThumbnailError(true);
@@ -219,7 +220,7 @@ export const IntroSection = () => {
       } else if (event === "done") {
         setTopic(parsed.topic);
         setFinished(true);
-        setCurrentStep(isImport ? 2 : 3);
+        setCurrentStep(isImport ? IMPORT_STEPS.length : STEPS.length);
         localStorage.removeItem(FORM_STATE_KEY);
         showToast({
           type: "success",
@@ -286,7 +287,6 @@ export const IntroSection = () => {
 
   // Imports save source content directly; AI research has its own progress steps.
   const steps = mode === "ai" ? STEPS : IMPORT_STEPS;
-  const thumbnailStepIndex = STEPS.length - 1;
 
   return (
     <section>
@@ -612,7 +612,7 @@ export const IntroSection = () => {
               {steps.map((step, index) => {
                 const isActive = index === currentStep;
                 const isCompleted = index < currentStep;
-                const isError = mode === "ai" && thumbnailError && index === thumbnailStepIndex;
+                const isError = thumbnailError && index === steps.length - 1;
                 return (
                   <div
                     key={step.key}
@@ -650,7 +650,7 @@ export const IntroSection = () => {
                 );
               })}
             </div>
-            {mode === "ai" && thumbnailError && (
+            {thumbnailError && (
               <p className='mt-3 text-center text-xs font-medium text-dr-danger'>
                 Could not create the thumbnail. You can try again later.
               </p>

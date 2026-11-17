@@ -153,6 +153,20 @@ func (r *Research) runImport() error {
 		}
 	}
 
+	// final step: create a cover image for the imported lesson, mirroring the
+	// AI research flow. Best-effort only: a failure here must not fail the
+	// import since the lesson content itself is already written.
+	if r.OnCoverImage != nil {
+		r.OnCoverImage("start", "")
+	}
+	if err := r.GenerateCoverImage(); err != nil {
+		if r.OnCoverImage != nil {
+			r.OnCoverImage("error", fmt.Sprintf("%v", err))
+		}
+	} else if r.OnCoverImage != nil {
+		r.OnCoverImage("done", "")
+	}
+
 	return nil
 }
 

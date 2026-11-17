@@ -185,6 +185,9 @@ func LearnFromSource(w http.ResponseWriter, r *http.Request) {
 	research.OnChapterDone = func(chapter string) {
 		sendEvent("chapterDone", chapter)
 	}
+	research.OnCoverImage = func(phase string, data string) {
+		sendEvent("coverImage", map[string]string{"phase": phase, "data": data})
+	}
 	if err := research.Run(); err != nil {
 		sendEvent("error", fmt.Sprintf("%v", err))
 		return
