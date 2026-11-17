@@ -1,5 +1,5 @@
 import { Portal } from "@ds";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 export const Select = ({
   label,
@@ -9,24 +9,54 @@ export const Select = ({
   placeholder = "Select an option",
   className = "",
   disabled = false,
+  multiple = false,
+  "aria-label": ariaLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0, flip: false });
   const containerRef = useRef(null);
+  const triggerRef = useRef(null);
   const listRef = useRef(null);
+  const id = useId();
 
-  const selectedOption = options.find((o) => o.value === value);
-  const displayLabel = selectedOption ? selectedOption.label : placeholder;
+  const selectedValues = multiple && Array.isArray(value) ? value : [];
+  const isSelected = (option) =>
+    multiple ? selectedValues.includes(option.value) : option.value === value;
+  const selectedOption = options.find(isSelected);
+  const displayLabel =
+    multiple && selectedValues.length > 1
+      ? `${placeholder} (${selectedValues.length})`
+      : multiple && selectedOption
+        ? `${placeholder}: ${selectedOption.label}`
+        : selectedOption ? selectedOption.label : placeholder;
+
+  const openDropdown = () => {
+    const index = options.findIndex(isSelected);
+    setHighlightedIndex(index >= 0 ? index : 0);
+    setIsOpen(true);
+  };
 
   const toggle = () => {
-    if (!disabled) setIsOpen((prev) => !prev);
+    if (disabled) return;
+    if (isOpen) setIsOpen(false);
+    else openDropdown();
   };
 
   const handleSelect = (option) => {
-    if (option.disabled) return;
-    onChange?.(option.value);
-    setIsOpen(false);
+    if (!option || option.disabled) return;
+    if (multiple) {
+      onChange?.(
+        isSelected(option)
+          ? selectedValues.filter(
+              (selectedValue) => selectedValue !== option.value,
+            )
+          : [...selectedValues, option.value],
+      );
+    } else {
+      onChange?.(option.value);
+      setIsOpen(false);
+    }
   };
 
   const calculatePosition = useCallback(() => {
@@ -80,13 +110,6 @@ export const Select = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen) {
-      const index = options.findIndex((o) => o.value === value);
-      setHighlightedIndex(index >= 0 ? index : 0);
-    }
-  }, [isOpen, options, value]);
-
-  useEffect(() => {
     if (isOpen && listRef.current && highlightedIndex >= 0) {
       const item = listRef.current.children[highlightedIndex];
       if (item) item.scrollIntoView({ block: "nearest" });
@@ -97,7 +120,7 @@ export const Select = ({
     if (!isOpen) {
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
         e.preventDefault();
-        setIsOpen(true);
+        openDropdown();
       }
       return;
     }
@@ -114,6 +137,7 @@ export const Select = ({
         setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : prev));
         break;
       case "Enter":
+      case " ":
         e.preventDefault();
         if (highlightedIndex >= 0) {
           handleSelect(options[highlightedIndex]);
@@ -134,21 +158,35 @@ export const Select = ({
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       {label && (
-        <label className='mb-1 block text-sm font-medium text-dr-text'>
+        <label
+          id={`${id}-label`}
+          htmlFor={`${id}-trigger`}
+          className='mb-1 block text-sm font-medium text-dr-text'
+        >
           {label}
         </label>
       )}
       <button
+        id={`${id}-trigger`}
+        ref={triggerRef}
         type='button'
+        role='combobox'
         onClick={toggle}
         onKeyDown={handleKeyDown}
         disabled={disabled}
+        aria-label={ariaLabel}
         aria-haspopup='listbox'
         aria-expanded={isOpen}
+        aria-controls={isOpen ? `${id}-listbox` : undefined}
+        aria-activedescendant={
+          isOpen && options[highlightedIndex]
+            ? `${id}-option-${highlightedIndex}`
+            : undefined
+        }
         className={`flex w-full items-center justify-between rounded-xl border bg-dr-surface px-4 py-3 text-left text-sm outline-none transition-colors focus:border-dr-accent focus:ring-2 focus:ring-dr-accent/25 ${
           disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
         } ${
-          selectedOption
+          (multiple ? selectedValues.length > 0 : selectedOption)
             ? "border-dr-border text-dr-text"
             : "border-dr-border text-dr-text-muted"
         }`}
@@ -164,8 +202,12 @@ export const Select = ({
       {isOpen && (
         <Portal>
           <div
+            id={`${id}-listbox`}
             ref={listRef}
             role='listbox'
+            aria-label={ariaLabel || (!label ? placeholder : undefined)}
+            aria-labelledby={!ariaLabel && label ? `${id}-label` : undefined}
+            aria-multiselectable={multiple || undefined}
             className='fixed z-50 max-h-[16rem] overflow-auto rounded-xl border border-dr-border bg-dr-surface shadow-lg'
             style={{
               top: position.flip
@@ -186,18 +228,47 @@ export const Select = ({
               options.map((option, index) => (
                 <div
                   key={option.value}
+                  id={`${id}-option-${index}`}
                   role='option'
-                  aria-selected={option.value === value}
-                  onClick={() => handleSelect(option)}
-                  className={`cursor-pointer px-4 py-2.5 text-sm transition-colors ${
-                    option.value === value
+                  aria-selected={isSelected(option)}
+                  aria-disabled={option.disabled || undefined}
+                  onMouseDown={(e) => {
+                    if (multiple) e.preventDefault();
+                  }}
+                  onClick={() => {
+                    if (multiple && !option.disabled) {
+                      setHighlightedIndex(index);
+                      triggerRef.current?.focus();
+                    }
+                    handleSelect(option);
+                  }}
+                  className={`${multiple ? "flex items-center justify-between gap-2" : ""} cursor-pointer px-4 py-2.5 text-sm transition-colors ${
+                    isSelected(option)
                       ? "bg-dr-accent-light text-dr-accent"
                       : "text-dr-text hover:bg-dr-surface-light"
                   } ${option.disabled ? "cursor-not-allowed opacity-50" : ""} ${
                     index === highlightedIndex ? "bg-dr-surface-light" : ""
                   }`}
                 >
-                  {option.label}
+                  {multiple ? (
+                    <span className='flex min-w-0 items-center gap-2'>
+                      {option.color && (
+                        <span
+                          aria-hidden='true'
+                          className='h-3.5 w-3.5 shrink-0 rounded-full border-2'
+                          style={{ borderColor: option.color, backgroundColor: option.color }}
+                        />
+                      )}
+                      {option.label}
+                    </span>
+                  ) : option.label}
+                  {multiple && isSelected(option) && (
+                    <ion-icon
+                      name='checkmark-outline'
+                      aria-hidden='true'
+                      className='shrink-0 text-lg'
+                    />
+                  )}
                 </div>
               ))
             )}

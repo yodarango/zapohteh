@@ -167,6 +167,7 @@ export const LearnView = () => {
   const [showAbandonModal, setShowAbandonModal] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const sharedContentRef = useRef(null);
+  const chapterRefs = useRef([]);
 
   const topic = isShared ? sharedData?.title || "" : routeTopic || "";
   const access = isShared ? sharedData?.access || "anonymous" : role;
@@ -738,6 +739,15 @@ export const LearnView = () => {
   }
 
   const { intro, chapters } = splitChapters(content);
+  const usedChapterIds = new Set();
+  const chapterIds = chapters.map((chapter) => {
+    const base = chapterSlug(chapter.title) || "chapter";
+    let id = base;
+    let suffix = 1;
+    while (usedChapterIds.has(id)) id = `${base}-${suffix++}`;
+    usedChapterIds.add(id);
+    return id;
+  });
 
   const toggleRead = async (chapterIndex) => {
     const nextRead = !readChapters.has(chapterIndex);
@@ -786,9 +796,8 @@ export const LearnView = () => {
     }
   };
 
-  const scrollToChapter = (title) => {
-    const id = chapterSlug(title);
-    const element = document.getElementById(id);
+  const scrollToChapter = (chapterIndex) => {
+    const element = chapterRefs.current[chapterIndex];
     if (element) {
       element.scrollIntoView({ behavior: "auto", block: "start" });
     }
@@ -1071,9 +1080,9 @@ export const LearnView = () => {
     if (node.nodeType === Node.TEXT_NODE) {
       node = node.parentElement;
     }
-    const section = node.closest("section[id]");
+    const section = node.closest("section[data-chapter-index]");
     if (!section) return "";
-    const chapter = chapters.find((c) => chapterSlug(c.title) === section.id);
+    const chapter = chapters[Number(section.dataset.chapterIndex)];
     return chapter?.title || "";
   };
 
@@ -1297,8 +1306,10 @@ export const LearnView = () => {
 
                   {chapters.map((chapter, chapterIndex) => (
                     <section
-                      key={chapter.title}
-                      id={chapterSlug(chapter.title)}
+                      key={chapterIndex}
+                      id={chapterIds[chapterIndex]}
+                      data-chapter-index={chapterIndex}
+                      ref={(element) => { chapterRefs.current[chapterIndex] = element; }}
                       className='mt-8 scroll-mt-6'
                     >
                       <h4 className='mb-2 text-xl font-bold text-blue-500/80'>
@@ -1388,11 +1399,11 @@ export const LearnView = () => {
                       <ul
                         className={`flex flex-col gap-1 ${!isChaptersOpen ? "md:hidden" : ""}`}
                       >
-                        {chapters.map((chapter) => (
-                          <li key={chapter.title}>
+                        {chapters.map((chapter, chapterIndex) => (
+                          <li key={chapterIndex}>
                             <button
                               type='button'
-                              onClick={() => scrollToChapter(chapter.title)}
+                              onClick={() => scrollToChapter(chapterIndex)}
                               className='flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text'
                             >
                               <ion-icon
@@ -1647,8 +1658,10 @@ export const LearnView = () => {
           const isGenerating = generating.has(chapter.title);
           return (
             <section
-              key={chapter.title}
-              id={chapterSlug(chapter.title)}
+              key={chapterIndex}
+              id={chapterIds[chapterIndex]}
+              data-chapter-index={chapterIndex}
+              ref={(element) => { chapterRefs.current[chapterIndex] = element; }}
               className='mt-8 scroll-mt-6'
             >
               <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
@@ -1886,10 +1899,10 @@ export const LearnView = () => {
               {chapters.map((chapter, chapterIndex) => {
                 const isRead = readChapters.has(chapterIndex);
                 return (
-                  <li key={chapter.title}>
+                  <li key={chapterIndex}>
                     <button
                       type='button'
-                      onClick={() => scrollToChapter(chapter.title)}
+                      onClick={() => scrollToChapter(chapterIndex)}
                       className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
                         isRead
                           ? "text-dr-success"

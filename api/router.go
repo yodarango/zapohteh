@@ -634,7 +634,14 @@ func GetAllCourseHighlights(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	highlights, total, err := models.ListAllCourseHighlights(authUser.Id, limit, offset)
+	filters := models.CourseHighlightFilters{
+		Search:   q.Get("search"),
+		Subjects: parseIntList(q.Get("subjects")),
+		Status:   q.Get("status"),
+		Years:    parseIntList(q.Get("year")),
+		Months:   parseIntList(q.Get("month")),
+	}
+	highlights, total, years, subjects, err := models.ListFilteredCourseHighlights(authUser.Id, limit, offset, filters)
 	if err != nil {
 		httpResponse.Error = fmt.Sprintf("%v", err)
 		httpResponse.Success = false
@@ -643,16 +650,13 @@ func GetAllCourseHighlights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subjectMap, _ := models.SubjectColorMap(authUser.Id)
-	for i := range highlights {
-		highlights[i].Subjects = subjectMap[highlights[i].CourseTitle]
-	}
-
 	httpResponse.Data = map[string]interface{}{
 		"highlights": highlights,
 		"total":      total,
 		"limit":      limit,
 		"offset":     offset,
+		"years":      years,
+		"subjects":   subjects,
 	}
 	httpResponse.Success = true
 	httpResponse.Error = nil

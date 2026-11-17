@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -763,67 +764,214 @@ type AllCourseHighlight struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-// ListAllCourseHighlights returns all of a user's course highlights across every
-// course, enriched with the course title, cover image path and highlight color.
-// Results are ordered by the highlight's updated_at timestamp descending and
-// paginated with limit/offset. The second return value is the total count.
+// CourseHighlightFilters holds the optional filters for the highlights feed.
+type CourseHighlightFilters struct {
+	Search   string
+	Subjects []int
+	Status   string
+	Years    []int
+	Months   []int
+}
+
+// ListAllCourseHighlights retains the unfiltered model API.
 func ListAllCourseHighlights(userId uint, limit, offset int) ([]AllCourseHighlight, int, error) {
+	highlights, total, _, _, err := ListFilteredCourseHighlights(userId, limit, offset, CourseHighlightFilters{})
+	return highlights, total, err
+}
+
+// ListFilteredCourseHighlights filters before pagination and returns creation years
+// from all accessible highlights, independently of the active filters.
+func ListFilteredCourseHighlights(userId uint, limit, offset int, filters CourseHighlightFilters) ([]AllCourseHighlight, int, []int, []Subject, error) {
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
-		return nil, 0, fmt.Errorf("database is not available")
+		return nil, 0, nil, nil, fmt.Errorf("database is not available")
 	}
 
-	var total int
-	err := ModelsRepo.DB.Conn.QueryRow(
-		"SELECT COUNT(*) FROM course_highlights WHERE user_id = ?",
-		userId,
-	).Scan(&total)
+	// Subjects belong to the actual course, including a collaborator's owner course.
+	subjects := make(map[int][]Subject)
+	availableSubjects := make(map[int]Subject)
+	subjectRows, err := ModelsRepo.DB.Conn.Query(`
+		SELECT cs.course_id, s.id, s.name, COALESCE(s.description, ''), s.color
+		FROM course_subjects cs
+		JOIN subjects s ON s.id = cs.subject_id
+		JOIN courses c ON c.id = cs.course_id
+		WHERE EXISTS (SELECT 1 FROM course_highlights ch WHERE ch.user_id = ? AND ch.course_id = c.id)
+		  AND (c.user_id = ? OR EXISTS (
+			SELECT 1 FROM course_collaborators cc
+			WHERE cc.course_id = c.id AND cc.user_id = ? AND cc.status = 'accepted'
+		  ))
+		ORDER BY cs.course_id, s.name, s.id`, userId, userId, userId)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count highlights: %w", err)
+		return nil, 0, nil, nil, fmt.Errorf("failed to read highlight subjects: %w", err)
+	}
+	for subjectRows.Next() {
+		var courseID int
+		var subject Subject
+		if err := subjectRows.Scan(&courseID, &subject.ID, &subject.Name, &subject.Description, &subject.Color); err != nil {
+			subjectRows.Close()
+			return nil, 0, nil, nil, fmt.Errorf("failed to scan highlight subject: %w", err)
+		}
+		subjects[courseID] = append(subjects[courseID], subject)
+		availableSubjects[subject.ID] = subject
+	}
+	if err := subjectRows.Err(); err != nil {
+		subjectRows.Close()
+		return nil, 0, nil, nil, fmt.Errorf("failed to read highlight subjects: %w", err)
+	}
+	subjectRows.Close()
+
+	filters.Search = strings.ToLower(strings.TrimSpace(filters.Search))
+	filters.Status = strings.ToLower(strings.TrimSpace(filters.Status))
+	readIndices := make(map[string][]int)
+	if filters.Status == "complete" || filters.Status == "incomplete" {
+		progressRows, err := ModelsRepo.DB.Conn.Query(
+			"SELECT course_title, chapter_index FROM reading_progress WHERE user_id = ? AND read = 1", userId,
+		)
+		if err != nil {
+			return nil, 0, nil, nil, fmt.Errorf("failed to read course progress: %w", err)
+		}
+		for progressRows.Next() {
+			var title string
+			var index int
+			if err := progressRows.Scan(&title, &index); err != nil {
+				progressRows.Close()
+				return nil, 0, nil, nil, fmt.Errorf("failed to scan course progress: %w", err)
+			}
+			key := utils.SanitizeFilename(title)
+			readIndices[key] = append(readIndices[key], index)
+		}
+		if err := progressRows.Err(); err != nil {
+			progressRows.Close()
+			return nil, 0, nil, nil, fmt.Errorf("failed to read course progress: %w", err)
+		}
+		progressRows.Close()
 	}
 
 	rows, err := ModelsRepo.DB.Conn.Query(`
 		SELECT
 			ch.id,
 			ch.course_id,
+			c.user_id,
 			c.title,
 			c.cover_image_path,
 			ch.highlight_id,
 			h.color,
 			ch.chapter,
 			ch.text,
-			ch.note,
+			COALESCE(ch.note, ''),
 			ch.created_at,
 			ch.updated_at
 		FROM course_highlights ch
 		JOIN courses c ON c.id = ch.course_id
-		JOIN highlights h ON h.id = ch.highlight_id
+		JOIN highlights h ON h.id = ch.highlight_id AND h.user_id = ch.user_id
 		WHERE ch.user_id = ?
-		ORDER BY ch.updated_at DESC
-		LIMIT ? OFFSET ?`,
-		userId, limit, offset,
+		  AND (c.user_id = ? OR EXISTS (
+			SELECT 1 FROM course_collaborators cc
+			WHERE cc.course_id = c.id AND cc.user_id = ? AND cc.status = 'accepted'
+		  ))
+		ORDER BY ch.updated_at DESC, ch.id DESC`,
+		userId, userId, userId,
 	)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read highlights: %w", err)
+		return nil, 0, nil, nil, fmt.Errorf("failed to read highlights: %w", err)
 	}
 	defer rows.Close()
 
 	highlights := []AllCourseHighlight{}
+	yearSet := make(map[int]struct{})
+	completion := make(map[int]bool)
+	total := 0
 	for rows.Next() {
 		var h AllCourseHighlight
+		var ownerID uint
 		var coverImagePath sql.NullString
 		if err := rows.Scan(
-			&h.ID, &h.CourseID, &h.CourseTitle, &coverImagePath,
+			&h.ID, &h.CourseID, &ownerID, &h.CourseTitle, &coverImagePath,
 			&h.HighlightID, &h.Color, &h.Chapter, &h.Text, &h.Note,
 			&h.CreatedAt, &h.UpdatedAt,
 		); err != nil {
-			return nil, 0, fmt.Errorf("failed to scan highlight: %w", err)
+			return nil, 0, nil, nil, fmt.Errorf("failed to scan highlight: %w", err)
 		}
 		if coverImagePath.Valid {
 			h.CoverImagePath = coverImagePath.String
 		}
-		highlights = append(highlights, h)
+		h.Subjects = subjects[h.CourseID]
+		created := h.CreatedAt.UTC()
+		yearSet[created.Year()] = struct{}{}
+
+		if filters.Search != "" &&
+			!strings.Contains(strings.ToLower(h.CourseTitle), filters.Search) &&
+			!strings.Contains(strings.ToLower(h.Chapter), filters.Search) &&
+			!strings.Contains(strings.ToLower(h.Text), filters.Search) &&
+			!strings.Contains(strings.ToLower(h.Note), filters.Search) {
+			continue
+		}
+		if len(filters.Subjects) > 0 {
+			matched := false
+			for _, subject := range h.Subjects {
+				if highlightFilterContains(filters.Subjects, subject.ID) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if len(filters.Years) > 0 && !highlightFilterContains(filters.Years, created.Year()) {
+			continue
+		}
+		if len(filters.Months) > 0 && !highlightFilterContains(filters.Months, int(created.Month())) {
+			continue
+		}
+		if filters.Status != "" {
+			if filters.Status != "complete" && filters.Status != "incomplete" {
+				continue
+			}
+			complete, ok := completion[h.CourseID]
+			if !ok {
+				research := Research{UserID: ownerID, Title: h.CourseTitle}
+				chapterCount := research.countVisibleChapters()
+				readCount := countVisibleReadChapters(readIndices[utils.SanitizeFilename(h.CourseTitle)], chapterCount)
+				complete = chapterCount > 0 && readCount == chapterCount
+				completion[h.CourseID] = complete
+			}
+			if (filters.Status == "complete") != complete {
+				continue
+			}
+		}
+		if total >= offset && len(highlights) < limit {
+			highlights = append(highlights, h)
+		}
+		total++
 	}
-	return highlights, total, nil
+	if err := rows.Err(); err != nil {
+		return nil, 0, nil, nil, fmt.Errorf("failed to read highlights: %w", err)
+	}
+	years := make([]int, 0, len(yearSet))
+	for year := range yearSet {
+		years = append(years, year)
+	}
+	sort.Ints(years)
+	filterSubjects := make([]Subject, 0, len(availableSubjects))
+	for _, subject := range availableSubjects {
+		filterSubjects = append(filterSubjects, subject)
+	}
+	sort.Slice(filterSubjects, func(i, j int) bool {
+		if filterSubjects[i].Name == filterSubjects[j].Name {
+			return filterSubjects[i].ID < filterSubjects[j].ID
+		}
+		return filterSubjects[i].Name < filterSubjects[j].Name
+	})
+	return highlights, total, years, filterSubjects, nil
+}
+
+func highlightFilterContains(values []int, value int) bool {
+	for _, v := range values {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
 
 // ReadHighlights reads the persisted highlights for a user's course. Highlights are

@@ -18,21 +18,7 @@ import {
 } from "@constants";
 import { useGet, formatLocalTime } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
-
-const MONTHS = [
-  { value: 1, label: "Jan" },
-  { value: 2, label: "Feb" },
-  { value: 3, label: "Mar" },
-  { value: 4, label: "Apr" },
-  { value: 5, label: "May" },
-  { value: 6, label: "Jun" },
-  { value: 7, label: "Jul" },
-  { value: 8, label: "Aug" },
-  { value: 9, label: "Sep" },
-  { value: 10, label: "Oct" },
-  { value: 11, label: "Nov" },
-  { value: 12, label: "Dec" },
-];
+import { FilterDropdowns } from "../FilterDropdowns";
 
 // Soft background tints rotated across the course cards to echo the reference
 // design's colorful thumbnails.
@@ -270,7 +256,7 @@ export const CoursesView = () => {
   });
   const courses = useMemo(() => data || [], [data]);
 
-  // Fetch the full, unfiltered course list so year/month filter tags always remain visible
+  // Fetch the full, unfiltered course list so year options remain available
   // regardless of other active filters.
   const { data: allCoursesData, refetch: refetchAllCourses } = useGet({
     url: API_GET_COURSES,
@@ -385,18 +371,8 @@ export const CoursesView = () => {
     return Array.from(years).sort((a, b) => a - b);
   }, [allCourses]);
 
-  const toggleInSet = (set, setFn, value) => {
-    const next = new Set(set);
-    if (next.has(value)) next.delete(value);
-    else next.add(value);
-    setFn(next);
-  };
-
-  const toggleStatus = (value) => {
-    setSelectedStatus((prev) => (prev === value ? "" : value));
-  };
-
   const hasFilters =
+    query ||
     debouncedQuery ||
     selectedSubjects.size > 0 ||
     selectedStatus ||
@@ -537,102 +513,20 @@ export const CoursesView = () => {
         />
       </div>
 
-      <div className='mb-6 flex flex-wrap items-center gap-2'>
-        {subjects.map((subject) => {
-          const selected = selectedSubjects.has(subject.id);
-          return (
-            <button
-              key={subject.id}
-              type='button'
-              onClick={() =>
-                toggleInSet(selectedSubjects, setSelectedSubjects, subject.id)
-              }
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
-                selected
-                  ? ""
-                  : "border-dr-border bg-dr-surface text-dr-text hover:border-dr-text-muted"
-              }`}
-              style={
-                selected
-                  ? {
-                      backgroundColor: subject.color,
-                      borderColor: subject.color,
-                      color: "#fff",
-                    }
-                  : {}
-              }
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 rounded-full border-2 ${
-                  selected ? "border-white bg-white" : "bg-transparent"
-                }`}
-                style={selected ? {} : { borderColor: subject.color }}
-              />
-              {subject.name}
-            </button>
-          );
-        })}
-
-        {["complete", "incomplete"].map((status) => {
-          const selected = selectedStatus === status;
-          return (
-            <button
-              key={status}
-              type='button'
-              onClick={() => toggleStatus(status)}
-              className={`rounded-full border px-3 py-1.5 text-sm font-medium capitalize transition-all ${
-                selected
-                  ? "border-dr-accent bg-dr-accent-light text-dr-accent"
-                  : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
-              }`}
-            >
-              {status}
-            </button>
-          );
-        })}
-
-        {availableYears.map((year) => (
-          <button
-            key={year}
-            type='button'
-            onClick={() => toggleInSet(selectedYears, setSelectedYears, year)}
-            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
-              selectedYears.has(year)
-                ? "border-dr-accent bg-dr-accent-light text-dr-accent"
-                : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
-            }`}
-          >
-            {year}
-          </button>
-        ))}
-
-        {MONTHS.map((month) => (
-          <button
-            key={month.value}
-            type='button'
-            onClick={() =>
-              toggleInSet(selectedMonths, setSelectedMonths, month.value)
-            }
-            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
-              selectedMonths.has(month.value)
-                ? "border-dr-accent bg-dr-accent-light text-dr-accent"
-                : "border-dr-border bg-dr-surface text-dr-text-muted hover:border-dr-text-muted"
-            }`}
-          >
-            {month.label}
-          </button>
-        ))}
-
-        {hasFilters && (
-          <button
-            type='button'
-            onClick={clearFilters}
-            className='rounded-full border border-dr-border px-3 py-1.5 text-sm font-medium text-dr-text-muted transition-all hover:border-dr-danger hover:text-dr-danger'
-          >
-            Clear
-          </button>
-        )}
-      </div>
+      <FilterDropdowns
+        subjects={subjects}
+        availableYears={availableYears}
+        selectedSubjects={selectedSubjects}
+        setSelectedSubjects={setSelectedSubjects}
+        selectedStatus={selectedStatus}
+        setSelectedStatus={setSelectedStatus}
+        selectedYears={selectedYears}
+        setSelectedYears={setSelectedYears}
+        selectedMonths={selectedMonths}
+        setSelectedMonths={setSelectedMonths}
+        hasFilters={hasFilters}
+        clearFilters={clearFilters}
+      />
 
       {loading && (
         <div className='flex justify-center py-20'>
