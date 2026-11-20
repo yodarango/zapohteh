@@ -24,6 +24,11 @@ type SharedCourse struct {
 	UserHighlights []UserHighlight    `json:"userHighlights"`
 	Access         string             `json:"access"`
 	Owner          string             `json:"owner"`
+	// Chapters lists the declared chapter titles in order and Imported reports
+	// whether the lesson came from a source import; the lesson view uses them
+	// to tell chapter headings apart from structural source headings.
+	Chapters []string `json:"chapters"`
+	Imported bool     `json:"imported"`
 }
 
 // SharedNote is the public view of a note attached to a shared lesson.
@@ -181,6 +186,8 @@ func GetSharedCourse(token string, viewer *AuthUser) (*SharedCourse, error) {
 		UserHighlights: []UserHighlight{},
 		Access:         access,
 		Owner:          ownerUsername,
+		Chapters:       research.ChapterTitles(),
+		Imported:       research.IsImported(),
 	}
 	if cover.Valid {
 		shared.CoverImagePath = cover.String

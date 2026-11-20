@@ -124,6 +124,10 @@ export const LearnView = () => {
   const [content, setContent] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
   const [courseLanguage, setCourseLanguage] = useState("");
+  // declared chapter titles and whether the lesson was imported from a source;
+  // imported lessons use the titles to split chapters (see splitChapters)
+  const [chapterTitles, setChapterTitles] = useState(null);
+  const [isImportedLesson, setIsImportedLesson] = useState(false);
   const [loading, setLoading] = useState(true);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
@@ -364,6 +368,8 @@ export const LearnView = () => {
       setContent(d.content || "");
       setCoverImagePath(d.coverImagePath || "");
       setCourseLanguage(d.language || "");
+      setChapterTitles(d.chapters || null);
+      setIsImportedLesson(!!d.imported);
       setRole(
         d.access === "owner"
           ? "owner"
@@ -432,6 +438,8 @@ export const LearnView = () => {
           setCourseLanguage(topicResult.data?.language || "");
           setShareToken(topicResult.data?.shareToken || "");
           setRole(topicResult.data?.role || "owner");
+          setChapterTitles(topicResult.data?.chapters || null);
+          setIsImportedLesson(!!topicResult.data?.imported);
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
@@ -738,7 +746,10 @@ export const LearnView = () => {
     );
   }
 
-  const { intro, chapters } = splitChapters(content);
+  const { intro, chapters } = splitChapters(
+    content,
+    isImportedLesson ? chapterTitles : null,
+  );
   const usedChapterIds = new Set();
   const chapterIds = chapters.map((chapter) => {
     const base = chapterSlug(chapter.title) || "chapter";

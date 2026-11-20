@@ -256,9 +256,9 @@ func walkArticleHTML(contentHTML string, base *url.URL) (string, []webImageRef, 
 		return text
 	}
 
-	// Headings are plain chapter titles. If they contain images, emit each image
+	// Headings keep their original level. If they contain images, emit each image
 	// at its position and keep the first text segment as the chapter heading.
-	writeHeading := func(n *html.Node) {
+	writeHeading := func(n *html.Node, level int) {
 		flushPara()
 		var text strings.Builder
 		headingWritten := false
@@ -269,7 +269,7 @@ func walkArticleHTML(contentHTML string, base *url.URL) (string, []webImageRef, 
 				return
 			}
 			if !headingWritten {
-				b.WriteString("## " + webHeadingText(value) + "\n\n")
+				b.WriteString(strings.Repeat("#", level) + " " + webHeadingText(value) + "\n\n")
 				headingWritten = true
 			} else {
 				b.WriteString(webMarkdownText(value) + "\n\n")
@@ -310,17 +310,17 @@ func walkArticleHTML(contentHTML string, base *url.URL) (string, []webImageRef, 
 			case "script", "style", "noscript", "iframe", "object":
 				return
 			case "h1", "h2", "h3", "h4", "h5", "h6":
-				writeHeading(n)
+				writeHeading(n, int(n.Data[1]-'0'))
 				return
 			case "p":
 				if len(lists) == 0 && quotes == 0 && webEmphasizedHeading(n) {
-					writeHeading(n)
+					writeHeading(n, 2)
 					return
 				}
 				flushPara()
 			case "center":
 				if len(lists) == 0 && quotes == 0 && webCenteredHeading(n) {
-					writeHeading(n)
+					writeHeading(n, 2)
 					return
 				}
 			case "ul", "ol":
@@ -362,7 +362,7 @@ func walkArticleHTML(contentHTML string, base *url.URL) (string, []webImageRef, 
 				flushPara()
 			case "b", "strong", "i", "em", "u":
 				if len(lists) == 0 && quotes == 0 && webStandaloneHeading(n) {
-					writeHeading(n)
+					writeHeading(n, 2)
 					return
 				}
 				para.WriteString(inline(n))

@@ -1017,6 +1017,8 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		"coverImagePath": models.GetCoverImagePath(ownerId, name),
 		"language":       models.GetCourseLanguage(ownerId, name),
 		"role":           role,
+		"chapters":       research.ChapterTitles(),
+		"imported":       research.IsImported(),
 	}
 	// only the owner manages the public share link
 	if role == models.CourseRoleOwner {

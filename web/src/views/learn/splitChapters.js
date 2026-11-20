@@ -1,22 +1,47 @@
 /* *************************************************************************************************
  * Splits assembled research markdown into an intro section (everything before the first chapter,
- * e.g. the "# Title" heading) and a list of chapters. Each chapter starts at a level-2 heading
- * ("## Chapter title"); its title is the heading text and its body is the markdown beneath it,
- * up to the next chapter. The heading itself is dropped from the body because the view renders
- * the title separately so it can sit next to the action button.
+ * e.g. the "# Title" heading) and a list of chapters.
+ *
+ * For generated lessons a chapter starts at every level-2 heading ("## Chapter title").
+ * Imported lessons preserve the heading structure of their source and pass their declared
+ * chapter titles: a heading of any level then starts a chapter only when it matches the next
+ * declared title, and every other heading stays in the flow and renders in place instead of
+ * becoming a chapter of its own.
+ *
+ * The heading itself is dropped from the body because the view renders the title separately
+ * so it can sit next to the action button.
  * *************************************************************************************************
  */
-export function splitChapters(markdown) {
+export function splitChapters(markdown, chapterTitles) {
   const lines = (markdown || "").split("\n");
+  const titles =
+    Array.isArray(chapterTitles) && chapterTitles.length > 0
+      ? chapterTitles
+      : null;
   const intro = [];
   const chapters = [];
   let current = null;
+  let nextTitle = 0;
 
   for (const line of lines) {
-    const match = /^##\s+(.*)$/.exec(line);
-    if (match) {
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    let chapterTitle = null;
+    if (titles) {
+      if (
+        heading &&
+        nextTitle < titles.length &&
+        heading[1].trim() === titles[nextTitle]
+      ) {
+        chapterTitle = titles[nextTitle];
+        nextTitle++;
+      }
+    } else if (heading && /^##\s/.test(line)) {
+      chapterTitle = heading[1].trim();
+    }
+
+    if (chapterTitle != null) {
       if (current) chapters.push(current);
-      current = { title: match[1].trim(), body: "" };
+      current = { title: chapterTitle, body: "" };
       continue;
     }
 

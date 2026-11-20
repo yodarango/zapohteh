@@ -24,10 +24,17 @@ type SourceImage struct {
 	Alt      string `json:"alt"`
 }
 
-// sourceSection is a heading plus its text, produced by splitSourceIntoSections.
+// sourceSection is a heading plus its text, produced by splitting imported
+// content on markdown headings. Level is the heading's markdown level (1-6),
+// or zero for synthetic sections like the introduction preamble. Prefix holds
+// structural (heading-only) sections that precede this chapter in the source
+// document; they are written into the chapter file ahead of the chapter's own
+// heading so the assembled document keeps the source structure and order.
 type sourceSection struct {
 	Heading string
 	Text    string
+	Level   int
+	Prefix  []sourceSection
 }
 
 const (
@@ -44,6 +51,11 @@ const (
 	// continuationTailLength is how much of the already written chapter is sent
 	// back to the model when appending a continuation batch.
 	continuationTailLength = 1500
+	// minChapterContentLength is the minimum amount of text that must follow a
+	// heading for it to become its own chapter. A heading with less text before
+	// the next heading is likely a parent heading with subheadings, so it is
+	// folded into the chapter that follows instead of becoming an empty chapter.
+	minChapterContentLength = 200
 )
 
 // imageTokenPattern matches the [IMAGE_N] markers placed in imported content.
@@ -52,8 +64,10 @@ var imageTokenPattern = regexp.MustCompile(`\[IMAGE_\d+\]`)
 // markdownHeadingPattern matches markdown-style headings (# …) in source text.
 var markdownHeadingPattern = regexp.MustCompile(`^#{1,6}\s+`)
 
-// Imported chapter boundaries match the level-two headings used by the lesson view.
-var importedChapterHeadingPattern = regexp.MustCompile(`^##[\t ]+(.*)$`)
+// Imported chapter boundaries match markdown headings of any level. Whether a
+// heading becomes a chapter is decided by the amount of text that follows it
+// (see mergeParentSections), not by the heading level.
+var importedChapterHeadingPattern = regexp.MustCompile(`^(#{1,6})[\t ]+(.*)$`)
 
 // numberedHeadingPattern matches lines like "Chapter 3" or "Part II".
 var numberedHeadingPattern = regexp.MustCompile(`(?i)^(chapter|part|section)\s+[\divxlc]+\b`)
@@ -96,11 +110,11 @@ func (r *Research) runImport() error {
 		if match := importedChapterHeadingPattern.FindStringSubmatch(line); match != nil {
 			sawHeading = true
 			flush()
-			title := strings.TrimSpace(match[1])
+			title := strings.TrimSpace(match[2])
 			if title == "" {
 				title = fmt.Sprintf("Section %d", len(sections)+1)
 			}
-			current = &sourceSection{Heading: title}
+			current = &sourceSection{Heading: title, Level: len(match[1])}
 			continue
 		}
 		if current == nil && strings.TrimSpace(line) != "" {
@@ -119,6 +133,11 @@ func (r *Research) runImport() error {
 		sections[0].Heading = "Content"
 	}
 
+	// Attach heading-only sections (parent headings with subheadings) to the
+	// chapter that follows them so they keep their place in the document
+	// without becoming empty chapters.
+	sections = mergeParentSections(sections)
+
 	r.Chapters = make([]string, len(sections))
 	for i, section := range sections {
 		r.Chapters[i] = section.Heading
@@ -133,7 +152,26 @@ func (r *Research) runImport() error {
 
 	chapterLines := append([]string(nil), r.Chapters...)
 	for i, section := range sections {
-		content := section.Text
+		// Chapter files carry the chapter's own heading at its original level,
+		// preceded by any structural headings that come before it in the source,
+		// so the assembled document preserves the source structure and order.
+		var b strings.Builder
+		writeSection := func(s sourceSection) {
+			level := s.Level
+			if level < 1 || level > 6 {
+				level = 2
+			}
+			b.WriteString(strings.Repeat("#", level) + " " + s.Heading + "\n\n")
+			if s.Text != "" {
+				b.WriteString(s.Text + "\n\n")
+			}
+		}
+		for _, pre := range section.Prefix {
+			writeSection(pre)
+		}
+		writeSection(section)
+
+		content := strings.TrimSpace(b.String())
 		for _, img := range r.SourceImages {
 			alt := strings.ReplaceAll(img.Alt, "]", "")
 			content = strings.ReplaceAll(content, img.Token, fmt.Sprintf("![%s](%s)", alt, img.WebPath))
@@ -168,6 +206,43 @@ func (r *Research) runImport() error {
 	}
 
 	return nil
+}
+
+/**************************************************************************************
+* mergeParentSections attaches heading-only sections to the chapter that follows them.
+* A heading with less than minChapterContentLength text before the next heading is
+* likely a parent heading with subheadings rather than a real section, so no chapter
+* is created for it: it becomes part of the following chapter's Prefix and is written
+* into the chapter file ahead of the chapter's own heading, keeping the source's
+* heading structure and order intact in the assembled document. The last section
+* always becomes a chapter so no content is ever lost.
+**************************************************************************************/
+func mergeParentSections(sections []sourceSection) []sourceSection {
+	merged := make([]sourceSection, 0, len(sections))
+	var prefix []sourceSection
+	for i, section := range sections {
+		last := i == len(sections)-1
+		if !last && utf8.RuneCountInString(section.Text) < minChapterContentLength {
+			prefix = append(prefix, section)
+			continue
+		}
+		section.Prefix = prefix
+		prefix = nil
+		merged = append(merged, section)
+	}
+	return merged
+}
+
+// chapterContentHasOwnHeading reports whether a chapter file already contains the
+// chapter title as a markdown heading line. Imported chapters written by older
+// pipeline versions hold only the chapter text.
+func chapterContentHasOwnHeading(content, title string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if match := importedChapterHeadingPattern.FindStringSubmatch(line); match != nil && strings.TrimSpace(match[2]) == title {
+			return true
+		}
+	}
+	return false
 }
 
 /**************************************************************************************
