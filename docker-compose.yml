@@ -10,11 +10,13 @@ services:
       - DB_PATH=${DB_PATH:-/app/data/app.db}
       - STATIC_PATH=web/dist
       - CONTENT_DIR=/app/data
+      - JOB_UPLOAD_DIR=/app/job-uploads
     networks:
       - app-network
     volumes:
       - .:/app
       - ${HOST_DATA_PATH:-./data}:/app/data
+      - ${HOST_JOB_UPLOAD_PATH:-./job-uploads}:/app/job-uploads
 
 networks:
   app-network:

@@ -23,6 +23,8 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_PUBLIC_SAMPLE, SamplePub)
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_ABOUT, models.Authenticate(LearnAbout))
 	mux.HandleFunc(constants.ROUTE_POST_LEARN_FROM_SOURCE, models.Authenticate(LearnFromSource))
+	mux.HandleFunc("/api/course-jobs", models.Authenticate(CourseJobsHandler))
+	mux.HandleFunc("GET /api/course-jobs/{id}", models.Authenticate(CourseJobHandler))
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))

@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Loading, Switch, TextArea } from "@ds";
 import {
-  API_POST_LEARN_ABOUT,
-  API_POST_LEARN_FROM_SOURCE,
+  API_COURSE_JOBS,
   API_GET_SUBJECTS,
   ROUTE_LEARN,
 } from "@constants";
-import { streamPost, useGet } from "@utils";
+import { useGet } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
 // Available research depth levels for a topic
@@ -45,6 +44,57 @@ const IMPORT_STEPS = [
   { label: "Create Thumbnail", key: "thumbnail" },
 ];
 
+// This project does not use the prop-types package.
+/* eslint-disable react/prop-types */
+function CourseJobs({ jobs, error, navigate }) {
+  return (
+    <div className='mt-8'>
+      <h2 className='text-lg font-semibold text-dr-text'>Course creation</h2>
+      {error && <p className='mt-2 text-sm text-dr-danger'>{error}</p>}
+      {!error && jobs.length === 0 && <p className='mt-2 text-sm text-dr-text-muted'>No recent creation jobs.</p>}
+      <div className='mt-3 flex flex-col gap-4'>
+        {jobs.map((job) => {
+          const active = job.status === "queued" || job.status === "running";
+          const steps = job.source === "ai" ? STEPS : IMPORT_STEPS;
+          const step = job.status === "succeeded" ? 3 : job.phase === "thumbnail" ? 2 : job.phase === "research" ? 1 : 0;
+          return (
+            <div key={job.id} className='rounded-xl border border-dr-border p-4'>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <h3 className='font-semibold text-dr-text'>{job.courseTitle || job.title || "Imported lesson"}</h3>
+                <span className='text-sm capitalize text-dr-text-muted'>{job.status}</span>
+              </div>
+              <div className='mt-3 flex flex-wrap gap-3 text-xs text-dr-text-muted'>
+                {steps.map((item, index) => (
+                  <span key={item.key} className={index < step ? "text-dr-success" : index === step && active ? "text-dr-accent" : ""}>
+                    {index < step && <ion-icon name='checkmark-outline'></ion-icon>} {item.label}
+                  </span>
+                ))}
+              </div>
+              {active && job.detail && <p className='mt-2 text-xs text-dr-text-muted'>{job.detail}</p>}
+              {job.chapters?.length > 0 && (
+                <ul className='mt-3 flex flex-col gap-1 text-sm'>
+                  {job.chapters.map((chapter, index) => (
+                    <li key={`${index}-${chapter}`} className={index < job.completed.length ? "text-dr-success" : "text-dr-text-muted"}>
+                      <ion-icon name={index < job.completed.length ? "checkmark-circle" : "ellipse-outline"}></ion-icon> {chapter}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {job.warning && <p className='mt-2 text-xs text-dr-danger'>Could not create the thumbnail. You can try again later.</p>}
+              {job.error && <p className='mt-2 text-sm text-dr-danger'>{job.error}</p>}
+              {job.notificationStatus === "failed" && <p className='mt-2 text-xs text-dr-danger'>The notification email could not be sent.</p>}
+              {job.status === "succeeded" && (
+                <Button success className='mt-3' onClick={() => navigate(`${ROUTE_LEARN}/${encodeURIComponent(job.courseTitle)}`)}>Read course</Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+/* eslint-enable react/prop-types */
+
 export const IntroSection = () => {
   const navigate = useNavigate();
   const { showToast } = useAppContext();
@@ -55,14 +105,10 @@ export const IntroSection = () => {
   const [writingStyle, setWritingStyle] = useState("academic");
   const [searchWeb, setSearchWeb] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [chapters, setChapters] = useState([]);
-  const [completed, setCompleted] = useState([]);
-  const [topic, setTopic] = useState("");
-  const [finished, setFinished] = useState(false);
-  const [currentStep, setCurrentStep] = useState(null);
-  const [thumbnailError, setThumbnailError] = useState(false);
-  // latest detail line reported by the extraction phase of an import
-  const [extractDetail, setExtractDetail] = useState("");
+  const [jobs, setJobs] = useState([]);
+  const [jobsError, setJobsError] = useState("");
+  const [notifyEmail, setNotifyEmail] = useState(false);
+  const requestRef = useRef(null);
   const [selectedSubjects, setSelectedSubjects] = useState(new Set());
   const [mode, setMode] = useState("ai");
   const [url, setUrl] = useState("");
@@ -165,6 +211,26 @@ export const IntroSection = () => {
     setPdfFile(file);
   };
 
+  const loadJobs = useCallback(async () => {
+    try {
+      const response = await fetch(API_COURSE_JOBS, {
+        headers: { Authorization: "Bearer " + localStorage.getItem("auth") },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.errors || "Could not load jobs");
+      setJobs(result.data);
+      setJobsError("");
+    } catch (err) {
+      setJobsError(err.message || "Could not load jobs");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadJobs();
+    const timer = setInterval(loadJobs, 5000);
+    return () => clearInterval(timer);
+  }, [loadJobs]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -191,90 +257,41 @@ export const IntroSection = () => {
       return;
     }
 
-    // reset progress state before starting a new lesson
     setLoading(true);
-    setChapters([]);
-    setCompleted([]);
-    setFinished(false);
-    setTopic("");
-    setCurrentStep(0);
-    setThumbnailError(false);
-    setExtractDetail("");
-
-    const isImport = mode !== "ai";
-    const handleEvent = (event, data) => {
-      const parsed = JSON.parse(data);
-      if (event === "extracting") {
-        if (parsed.phase === "done") setCurrentStep(1);
-        setExtractDetail(parsed.detail || parsed.phase);
-      } else if (event === "chapters") {
-        setChapters(parsed);
-        setCurrentStep(1);
-      } else if (event === "chapterDone") {
-        setCompleted((prev) => [...prev, parsed]);
-      } else if (event === "coverImage") {
-        setCurrentStep(2);
-        if (parsed.phase === "error") {
-          setThumbnailError(true);
-        }
-      } else if (event === "done") {
-        setTopic(parsed.topic);
-        setFinished(true);
-        setCurrentStep(isImport ? IMPORT_STEPS.length : STEPS.length);
-        localStorage.removeItem(FORM_STATE_KEY);
-        showToast({
-          type: "success",
-          message: "Course created successfully",
-        });
-      } else if (event === "error") {
-        showToast({
-          type: "danger",
-          message:
-            typeof parsed === "string"
-              ? parsed
-              : parsed?.message || "Something went wrong",
-        });
-      }
+    const body = {
+      source: mode === "ai" ? "ai" : mode === "pdf" ? "doc" : "web",
+      title: title.trim(), input: input.trim(), url: url.trim(), level,
+      language, writingStyle, searchWeb, notifyEmail,
+      subjectIds: Array.from(selectedSubjects),
     };
-
+    const signature = JSON.stringify(body);
+    if (!requestRef.current || requestRef.current.signature !== signature || requestRef.current.file !== pdfFile) {
+      requestRef.current = { signature, file: pdfFile, key: crypto.randomUUID() };
+    }
+    body.requestKey = requestRef.current.key;
     try {
+      let payload = JSON.stringify(body);
+      const headers = { Authorization: "Bearer " + localStorage.getItem("auth") };
       if (mode === "pdf") {
-        const formData = new FormData();
-        formData.append("file", pdfFile);
-        if (title.trim()) formData.append("title", title.trim());
-        formData.append("language", language);
-        formData.append("subjectIds", Array.from(selectedSubjects).join(","));
-        await streamPost({
-          url: API_POST_LEARN_FROM_SOURCE,
-          body: formData,
-          onEvent: handleEvent,
-        });
-      } else if (mode === "url") {
-        await streamPost({
-          url: API_POST_LEARN_FROM_SOURCE,
-          body: {
-            url: url.trim(),
-            title: title.trim(),
-            language,
-            subjectIds: Array.from(selectedSubjects),
-          },
-          onEvent: handleEvent,
-        });
+        payload = new FormData();
+        payload.append("file", pdfFile);
+        payload.append("title", body.title);
+        payload.append("language", language);
+        payload.append("writingStyle", writingStyle);
+        payload.append("subjectIds", body.subjectIds.join(","));
+        payload.append("notifyEmail", String(notifyEmail));
+        payload.append("requestKey", body.requestKey);
       } else {
-        await streamPost({
-          url: API_POST_LEARN_ABOUT,
-          body: {
-            title: title.trim(),
-            input: input.trim(),
-            level,
-            language,
-            writingStyle,
-            searchWeb,
-            subjectIds: Array.from(selectedSubjects),
-          },
-          onEvent: handleEvent,
-        });
+        headers["Content-Type"] = "application/json";
       }
+      const response = await fetch(API_COURSE_JOBS, { method: "POST", headers, body: payload });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.errors || "Could not queue course");
+      requestRef.current = null;
+      localStorage.removeItem(FORM_STATE_KEY);
+      setPdfFile(null);
+      showToast({ type: "success", message: "Course queued. You can safely leave this page." });
+      await loadJobs();
     } catch (err) {
       showToast({
         type: "danger",
@@ -284,9 +301,6 @@ export const IntroSection = () => {
       setLoading(false);
     }
   };
-
-  // Imports save source content directly; AI research has its own progress steps.
-  const steps = mode === "ai" ? STEPS : IMPORT_STEPS;
 
   return (
     <section>
@@ -519,6 +533,10 @@ export const IntroSection = () => {
                 />
               </div>
             )}
+            <label className='flex items-center gap-2 text-sm font-medium text-dr-text'>
+              <input type='checkbox' checked={notifyEmail} onChange={(event) => setNotifyEmail(event.target.checked)} />
+              Email me when this course is ready
+            </label>
             {/* Subject selector */}
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>Subjects</span>
@@ -581,9 +599,7 @@ export const IntroSection = () => {
                 className='text-dr-accent'
               ></ion-icon>
               <span>
-                {mode === "ai"
-                  ? "Reading what others have written..."
-                  : "Importing your content..."}
+                Submitting your course...
               </span>
             </div>
           ) : (
@@ -593,118 +609,7 @@ export const IntroSection = () => {
           )}
         </form>
 
-        {/* Timeline of lesson creation */}
-        {currentStep !== null && (
-          <div className='relative mt-6'>
-            <div className='absolute left-0 right-0 top-4 flex px-4'>
-              {steps.map((_, index) =>
-                index < steps.length - 1 ? (
-                  <div
-                    key={index}
-                    className={`h-0.5 flex-1 ${
-                      index < currentStep - 1 ? "bg-dr-success" : "bg-dr-border"
-                    }`}
-                  />
-                ) : null,
-              )}
-            </div>
-            <div className='relative flex items-center justify-between'>
-              {steps.map((step, index) => {
-                const isActive = index === currentStep;
-                const isCompleted = index < currentStep;
-                const isError = thumbnailError && index === steps.length - 1;
-                return (
-                  <div
-                    key={step.key}
-                    className='flex flex-1 flex-col items-center gap-2'
-                  >
-                    <div
-                      className={`relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                        isError
-                          ? "bg-dr-danger text-white"
-                          : isCompleted
-                            ? "bg-dr-success text-white"
-                            : isActive
-                              ? "bg-dr-accent text-white animate-pulse"
-                              : "border border-dr-border bg-dr-surface text-dr-text-muted"
-                      }`}
-                    >
-                      {isError ? (
-                        <ion-icon name='close-outline'></ion-icon>
-                      ) : isCompleted ? (
-                        <ion-icon name='checkmark-outline'></ion-icon>
-                      ) : (
-                        index + 1
-                      )}
-                    </div>
-                    <span
-                      className={`text-center text-xs font-medium ${
-                        isError || isActive || isCompleted
-                          ? "text-dr-text"
-                          : "text-dr-text-muted"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {thumbnailError && (
-              <p className='mt-3 text-center text-xs font-medium text-dr-danger'>
-                Could not create the thumbnail. You can try again later.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Live detail line while an import is extracting (e.g. "page 3 of 12") */}
-        {loading && mode !== "ai" && currentStep === 0 && extractDetail && (
-          <p className='mt-3 text-center text-xs text-dr-text-muted'>
-            {extractDetail}
-          </p>
-        )}
-
-        {/* Progress of each chapter as it gets completed */}
-        {mode === "ai" && chapters.length > 0 && (
-          <ul className='mt-6 flex flex-col gap-2 text-left'>
-            {chapters.map((chapter) => {
-              const isDone = completed.includes(chapter);
-              const isCurrent =
-                !isDone &&
-                chapter === chapters.find((c) => !completed.includes(c));
-              return (
-                <li
-                  key={chapter}
-                  className={`flex items-center gap-2 ${
-                    isDone ? "text-dr-success" : "text-dr-text-muted"
-                  }`}
-                >
-                  {isCurrent ? (
-                    <Loading size={18} />
-                  ) : (
-                    <ion-icon
-                      name={isDone ? "checkmark-circle" : "ellipse-outline"}
-                    ></ion-icon>
-                  )}
-                  <span>{chapter}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {finished && (
-          <Button
-            success
-            className='mt-6 w-full'
-            onClick={() =>
-              navigate(`${ROUTE_LEARN}/${encodeURIComponent(topic)}`)
-            }
-          >
-            Read topic
-          </Button>
-        )}
+        <CourseJobs jobs={jobs} error={jobsError} navigate={navigate} />
       </div>
     </section>
   );

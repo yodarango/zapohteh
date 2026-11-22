@@ -13,12 +13,10 @@ import (
 	"zapohteh/repo"
 )
 
-
-func main (){
-
+func main() {
 
 	// set up the db
-	conn, err:= db.DBConnection()
+	conn, err := db.DBConnection()
 
 	// there is no point to continue after this if the db fails
 	if err != nil {
@@ -32,7 +30,7 @@ func main (){
 
 	dbConfig := db.NewDBConnection(conn)
 	defer dbConfig.Conn.Close()
-	
+
 	// set up the app
 	// Load environment variables from a .env file if present, but do not fail
 	// if the file is missing (e.g. when running in Docker with env vars injected).
@@ -45,18 +43,24 @@ func main (){
 	// pass repo to all necessary components
 	api.SetRouterConfig(appRepo)
 	models.SetModelsConfig(appRepo)
+	if err := api.StartCourseJobWorkers(); err != nil {
+		log.Fatalf("Unable to start course job workers: %v", err)
+	}
 
 	// inizialize the server
+	addr := os.Getenv("LISTEN_ADDR")
+	if addr == "" {
+		addr = ":8014"
+	}
 	server := &http.Server{
-		Addr: ":8014",
-		Handler: api.Router(),
-		MaxHeaderBytes: 5 << 20 ,
-
+		Addr:           addr,
+		Handler:        api.Router(),
+		MaxHeaderBytes: 5 << 20,
 	}
 
 	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
-		os.Exit(1) 
+		os.Exit(1)
 	}
 }

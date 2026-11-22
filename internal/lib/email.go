@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"html/template"
 	"net/smtp"
+	"net/url"
 	"os"
+	"strings"
 )
 
 type EmailService struct {
@@ -14,6 +16,29 @@ type EmailService struct {
 	SMTPUsername string
 	SMTPPassword string
 	FromEmail    string
+}
+
+// SendCourseReadyEmail sends a link to a successfully created course.
+func (es *EmailService) SendCourseReadyEmail(toEmail, firstName, title string) error {
+	if es.SMTPHost == "" || es.SMTPPort == "" || es.SMTPUsername == "" || es.SMTPPassword == "" || es.FromEmail == "" {
+		return fmt.Errorf("SMTP configuration is incomplete")
+	}
+	baseURL := strings.TrimRight(os.Getenv("BASE_URL"), "/")
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("BASE_URL must be an absolute HTTP or HTTPS URL")
+	}
+	tmpl, err := template.ParseFiles("templates/course_ready_email.html")
+	if err != nil {
+		return fmt.Errorf("failed to parse course email template: %w", err)
+	}
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, struct{ FirstName, Title, CourseURL string }{firstName, title, baseURL + "/learn/" + url.PathEscape(title)}); err != nil {
+		return err
+	}
+	message := fmt.Sprintf("To: %s\r\nSubject: Your course is ready\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", toEmail, body.String())
+	auth := smtp.PlainAuth("", es.SMTPUsername, es.SMTPPassword, es.SMTPHost)
+	return smtp.SendMail(es.SMTPHost+":"+es.SMTPPort, auth, es.FromEmail, []string{toEmail}, []byte(message))
 }
 
 type VerificationEmailData struct {
@@ -34,7 +59,7 @@ type PasswordResetEmailData struct {
 
 /**************************************************************************************
 * Creates a new email service with SMTP configuration from the environment variables.
-* 
+*
 * Status: ✅
 **************************************************************************************/
 
@@ -50,7 +75,7 @@ func NewEmailService() *EmailService {
 
 /**************************************************************************************
 * SendVerificationEmail sends a verification email with the verification code.
-* 
+*
 * Status: ✅
 **************************************************************************************/
 
@@ -62,7 +87,7 @@ func (es *EmailService) SendVerificationEmail(toEmail, firstName, verificationCo
 
 	// Parse template
 	tmpl, err := template.ParseFiles("templates/verification_email.html")
-    
+
 	if err != nil {
 		return fmt.Errorf("failed to parse verification email template: %w", err)
 	}
@@ -74,7 +99,7 @@ func (es *EmailService) SendVerificationEmail(toEmail, firstName, verificationCo
 		VerificationCode: verificationCode,
 		BaseURL:          os.Getenv("BASE_URL") + "/auth/verify",
 	}
-	
+
 	err = tmpl.Execute(&body, data)
 	if err != nil {
 		return fmt.Errorf("failed to execute verification email template: %w", err)
@@ -103,7 +128,7 @@ func (es *EmailService) SendVerificationEmail(toEmail, firstName, verificationCo
 
 /**************************************************************************************
 * SendWelcomeEmail sends a welcome email after successful verification.
-* 
+*
 * Status: ✅
 **************************************************************************************/
 func (es *EmailService) SendWelcomeEmail(toEmail, firstName string) error {
@@ -119,7 +144,7 @@ func (es *EmailService) SendWelcomeEmail(toEmail, firstName string) error {
 		FirstName: firstName,
 		BaseURL:   os.Getenv("BASE_URL"),
 	}
-	
+
 	err = tmpl.Execute(&body, data)
 	if err != nil {
 		return fmt.Errorf("failed to execute welcome email template: %w", err)
@@ -135,7 +160,7 @@ func (es *EmailService) SendWelcomeEmail(toEmail, firstName string) error {
 
 	auth := smtp.PlainAuth("", es.SMTPUsername, es.SMTPPassword, es.SMTPHost)
 	addr := fmt.Sprintf("%s:%s", es.SMTPHost, es.SMTPPort)
-	
+
 	return smtp.SendMail(addr, auth, es.FromEmail, []string{toEmail}, []byte(message))
 }
 
@@ -152,7 +177,7 @@ func (es *EmailService) SendPasswordResetEmail(toEmail, firstName, temporaryPass
 		FirstName:         firstName,
 		TemporaryPassword: temporaryPassword,
 	}
-	
+
 	err = tmpl.Execute(&body, data)
 	if err != nil {
 		return fmt.Errorf("failed to execute password reset email template: %w", err)
@@ -168,6 +193,6 @@ func (es *EmailService) SendPasswordResetEmail(toEmail, firstName, temporaryPass
 
 	auth := smtp.PlainAuth("", es.SMTPUsername, es.SMTPPassword, es.SMTPHost)
 	addr := fmt.Sprintf("%s:%s", es.SMTPHost, es.SMTPPort)
-	
+
 	return smtp.SendMail(addr, auth, es.FromEmail, []string{toEmail}, []byte(message))
 }

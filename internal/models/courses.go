@@ -44,7 +44,7 @@ func CreateImportedCourse(userId uint, title, language, source string) error {
 	if title == "" || utils.SanitizeFilename(title) != title {
 		return fmt.Errorf("invalid course title")
 	}
-	if source != CourseSourceWeb && source != CourseSourceDoc {
+	if source != CourseSourceWeb && source != CourseSourceDoc && source != CourseSourceAI {
 		return fmt.Errorf("invalid import source: %q", source)
 	}
 
