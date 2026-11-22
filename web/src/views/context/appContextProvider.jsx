@@ -1,4 +1,4 @@
-import { USER_STATUS_ACTIVE, USER_STATUS_PENDING } from "@constants";
+import { USER_STATUS_ACTIVE, USER_STATUS_PENDING, API_NOTIFICATIONS } from "@constants";
 import { initialAppData, AppContext } from "./appContext";
 import { useContext, useEffect, useState, useCallback } from "react";
 import update from "immutability-helper";
@@ -8,6 +8,30 @@ export const AppContextProvider = (props) => {
   const { children } = props;
 
   const [state, setState] = useState(initialAppData.state);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!state.isAuthenticated) return;
+    const token = localStorage.getItem("auth");
+    try {
+      const response = await fetch(`${API_NOTIFICATIONS}/unread-count`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      const result = await response.json();
+      if (response.ok && result.success && localStorage.getItem("auth") === token) setUnreadNotifications(result.data.count);
+    } catch {
+      // Keep the previous count until the next successful refresh.
+    }
+  }, [state.isAuthenticated]);
+
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    refreshNotifications();
+    const timer = setInterval(refreshNotifications, 15000);
+    const onFocus = () => refreshNotifications();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [state.isAuthenticated, refreshNotifications]);
 
   function toggleMenu() {
     setState((prevState) =>
@@ -103,6 +127,7 @@ export const AppContextProvider = (props) => {
   // Logout function
   function logout() {
     localStorage.removeItem("auth");
+    setUnreadNotifications(0);
     setState((prevState) =>
       update(prevState, {
         isAuthenticated: { $set: false },
@@ -144,6 +169,8 @@ export const AppContextProvider = (props) => {
         closeLearnMenu,
         setupAuth,
         showToast,
+        unreadNotifications,
+        refreshNotifications,
         logout,
         state,
       }}

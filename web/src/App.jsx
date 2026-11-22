@@ -8,6 +8,7 @@ import {
   HighlightsView,
   MeView,
   ShareView,
+  NotificationsView,
 } from "@views";
 import { MainLayout, ProtectedRoute, AuthRoute } from "@components";
 import {
@@ -27,6 +28,7 @@ import {
   ROUTE_CREATE,
   ROUTE_HIGHLIGHTS,
   ROUTE_SHARE,
+  ROUTE_NOTIFICATIONS,
 } from "@constants";
 
 const router = createBrowserRouter(
@@ -36,6 +38,7 @@ const router = createBrowserRouter(
         <Route element={<MainLayout />} errorElement={<></>}>
           <Route path={ROUTE_HOME} element={<CoursesView />} />
           <Route path={ROUTE_CREATE} element={<IndexView />} />
+          <Route path={ROUTE_NOTIFICATIONS} element={<NotificationsView />} />
           <Route path={ROUTE_SUBJECTS} element={<SubjectsView />} />
           <Route path={ROUTE_HIGHLIGHTS} element={<HighlightsView />} />
           <Route path={ROUTE_USERS_ME} element={<MeView />} />

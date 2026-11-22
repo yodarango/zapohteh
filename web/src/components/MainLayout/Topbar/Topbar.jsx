@@ -1,94 +1,25 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   API_GET_COURSES,
   ROUTE_LEARN,
-  API_GET_COLLABORATIONS,
-  API_POST_COLLABORATION,
+  ROUTE_NOTIFICATIONS,
 } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
-import { avatars } from "@images";
 import zapohtehLogo from "../../../../public/logo.webp";
 
 export const Topbar = ({ onMenuToggle }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { openLearnMenu, showToast } = useAppContext();
+  const { openLearnMenu, unreadNotifications } = useAppContext();
   const containerRef = useRef(null);
-  const invitesRef = useRef(null);
   const timeoutRef = useRef(null);
   const isLearnRoute = location.pathname.startsWith(ROUTE_LEARN);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [searching, setSearching] = useState(false);
-  // pending collaboration invitations shown in the bell dropdown
-  const [invites, setInvites] = useState([]);
-  const [showInvites, setShowInvites] = useState(false);
-
-  const loadInvites = useCallback(async () => {
-    try {
-      const res = await fetch(API_GET_COLLABORATIONS, {
-        headers: authHeaders(),
-      });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setInvites(json.data);
-      }
-    } catch {
-      // keep the previous list on network errors
-    }
-  }, []);
-
-  // fetch pending invites on mount so the badge shows without opening the bell
-  useEffect(() => {
-    loadInvites();
-  }, [loadInvites]);
-
-  // close the invites dropdown on outside click (same pattern as the course search)
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (invitesRef.current && !invitesRef.current.contains(e.target)) {
-        setShowInvites(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  const toggleInvites = () => {
-    setShowInvites((prev) => {
-      const next = !prev;
-      if (next) loadInvites();
-      return next;
-    });
-  };
-
-  const respondToInvite = async (inviteId, action) => {
-    try {
-      const res = await fetch(`${API_POST_COLLABORATION}/${inviteId}`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ action }),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.errors || json.error || "Failed to respond");
-      }
-      showToast({
-        type: "success",
-        message:
-          action === "accept" ? "Invitation accepted" : "Invitation declined",
-      });
-      loadInvites();
-    } catch (err) {
-      showToast({
-        type: "danger",
-        message: err.message || "Failed to respond to invitation",
-      });
-    }
-  };
 
   useEffect(() => {
     if (!query.trim()) {
@@ -166,88 +97,6 @@ export const Topbar = ({ onMenuToggle }) => {
 
       {/* Desktop search + notifications */}
       <div className='hidden items-center gap-4 lg:flex'>
-        <div ref={invitesRef} className='relative'>
-          <button
-            type='button'
-            onClick={toggleInvites}
-            className='flex items-center gap-2 text-sm font-medium text-dr-text-muted transition-colors hover:text-dr-text'
-            aria-label='Notifications'
-          >
-            <span className='relative'>
-              <ion-icon
-                name='notifications-outline'
-                className='text-lg'
-              ></ion-icon>
-              {invites.length > 0 && (
-                <span className='absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-dr-danger px-1 text-[10px] font-bold text-white'>
-                  {invites.length}
-                </span>
-              )}
-            </span>
-            <span className='hidden sm:inline'>Notifications</span>
-          </button>
-          {showInvites && (
-            <div className='absolute left-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-dr-border bg-dr-surface shadow-lg'>
-              {invites.length === 0 ? (
-                <div className='px-3 py-2 text-sm text-dr-text-muted'>
-                  No pending invitations
-                </div>
-              ) : (
-                invites.map((invite) => {
-                  const chosen = avatars.find(
-                    (a) => a.pathName === invite.inviterAvatar,
-                  );
-                  return (
-                    <div
-                      key={invite.id}
-                      className='flex flex-col gap-2 border-b border-dr-border px-3 py-2 last:border-b-0'
-                    >
-                      <div className='flex items-center gap-2'>
-                        <div className='flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-xs font-semibold text-dr-accent'>
-                          {chosen?.image ? (
-                            <img
-                              src={chosen.image}
-                              alt={invite.inviterUsername}
-                              className='h-full w-full object-cover'
-                            />
-                          ) : (
-                            invite.inviterUsername.charAt(0).toUpperCase()
-                          )}
-                        </div>
-                        <p className='min-w-0 text-sm text-dr-text'>
-                          <span className='font-semibold'>
-                            @{invite.inviterUsername}
-                          </span>{" "}
-                          invited you to collaborate on{" "}
-                          <span className='font-semibold'>
-                            {invite.courseTitle}
-                          </span>
-                        </p>
-                      </div>
-                      <div className='flex justify-end gap-2'>
-                        <button
-                          type='button'
-                          onClick={() => respondToInvite(invite.id, "decline")}
-                          className='rounded-lg border border-dr-border px-2 py-1 text-xs font-semibold text-dr-text-muted transition-colors hover:bg-dr-surface-light'
-                        >
-                          Decline
-                        </button>
-                        <button
-                          type='button'
-                          onClick={() => respondToInvite(invite.id, "accept")}
-                          className='rounded-lg bg-dr-accent px-2 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90'
-                        >
-                          Accept
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
-
         <div ref={containerRef} className='relative w-full max-w-xs'>
           <ion-icon
             name='search-outline'
@@ -262,7 +111,9 @@ export const Topbar = ({ onMenuToggle }) => {
           />
           {showResults && (
             <div className='absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-dr-border bg-dr-surface shadow-lg'>
-              {results.length === 0 ? (
+              {searching ? (
+                <div className='px-3 py-2 text-sm text-dr-text-muted'>Searching...</div>
+              ) : results.length === 0 ? (
                 <div className='px-3 py-2 text-sm text-dr-text-muted'>
                   No results
                 </div>
@@ -287,14 +138,23 @@ export const Topbar = ({ onMenuToggle }) => {
         </div>
       </div>
 
-      {/* Mobile brand icon */}
-      <div className='flex items-center gap-2 lg:hidden'>
-        <img
-          src={zapohtehLogo}
-          alt='Logo'
-          className='h-8 w-8 rounded-lg object-contain'
-        />
-        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+      <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-2 lg:hidden'>
+          <img src={zapohtehLogo} alt='Logo' className='h-8 w-8 rounded-lg object-contain' />
+          <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+        </div>
+        <button
+          type='button'
+          onClick={() => navigate(ROUTE_NOTIFICATIONS)}
+          className='flex h-10 items-center gap-2 rounded-xl px-2 text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text'
+          aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}
+        >
+          <span className='relative flex'>
+            <ion-icon name='notifications-outline' className='text-xl'></ion-icon>
+            {unreadNotifications > 0 && <span className='absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-dr-danger' />}
+          </span>
+          <span className='hidden text-sm font-medium lg:inline'>Notifications</span>
+        </button>
       </div>
     </header>
   );
