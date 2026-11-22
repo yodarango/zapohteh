@@ -8,6 +8,7 @@ export { TextArea } from "./TextArea/TextArea";
 export { Tooltip } from "./Tooltip/Tooltip";
 export { Portal } from "./Portal/Portal";
 export { Switch } from "./Switch/Switch";
+export { Checkbox } from "./Checkbox/Checkbox";
 export { Button } from "./Button/Button";
 export { Hearts } from "./Hearts/Hearts";
 export { Input } from "./Input/Input";

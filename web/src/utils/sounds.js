@@ -62,3 +62,8 @@ export function playToastSound(type) {
   const cue = TOAST_CUES[type] || "chime";
   play(cue);
 }
+
+// A newly received in-app notification uses the same Foley sound library.
+export function playNotificationSound() {
+  play("chime");
+}

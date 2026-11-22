@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Checkbox } from "@ds";
 import { API_NOTIFICATIONS, ROUTE_CREATE, ROUTE_LEARN } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -136,9 +137,9 @@ export const NotificationsView = () => {
       </div>
       {items.length > 0 && (
         <div className='mt-4 flex flex-wrap items-center gap-2'>
-          <label className='mr-2 flex items-center gap-2 text-sm text-dr-text-muted'>
-            <input type='checkbox' checked={selected.length === items.length} onChange={(event) => setSelected(event.target.checked ? items.map((item) => item.id) : [])} /> Select loaded
-          </label>
+          <Checkbox className='mr-2 text-dr-text-muted' checked={selected.length === items.length} indeterminate={selected.length > 0 && selected.length < items.length} onChange={(event) => setSelected(event.target.checked ? items.map((item) => item.id) : [])}>
+            Select loaded
+          </Checkbox>
           <button type='button' className={buttonStyle} disabled={busy || !selected.length || selected.length > 100} onClick={() => action("read", selected)}>Read</button>
           <button type='button' className={buttonStyle} disabled={busy || !selected.length || selected.length > 100} onClick={() => action("unread", selected)}>Unread</button>
           <button type='button' className={buttonStyle} disabled={busy || !selected.length || selected.length > 100 || (view !== "archived" && includesPending)} onClick={() => action(view === "archived" ? "restore" : "archive", selected)}>{view === "archived" ? "Restore" : "Archive"}</button>
@@ -154,7 +155,7 @@ export const NotificationsView = () => {
           const pending = item.type === "invitation" && item.invitationStatus === "pending";
           return (
             <article key={item.id} className={`flex gap-3 rounded-xl border p-4 ${item.read ? "border-dr-border" : "border-dr-accent bg-dr-accent-light/30"}`}>
-              <input type='checkbox' aria-label={`Select ${labelFor(item)}`} checked={selected.includes(item.id)} onChange={(event) => setSelected((prev) => event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id))} className='mt-1 self-start' />
+              <Checkbox aria-label={`Select ${labelFor(item)}`} checked={selected.includes(item.id)} onChange={(event) => setSelected((prev) => event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id))} className='mt-1 self-start' />
               <div className='min-w-0 flex-1'>
                 <p className='text-sm font-medium text-dr-text'>{labelFor(item)} {!item.read && <span className='text-xs text-dr-accent'>(Unread)</span>}</p>
                 <p className='mt-1 text-xs text-dr-text-muted'>{displayTime(item.createdAt)}{item.type === "invitation" && !pending ? ` · ${item.invitationStatus}` : ""}</p>

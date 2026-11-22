@@ -109,11 +109,12 @@ func ListNotifications(w http.ResponseWriter, r *http.Request) {
 func NotificationUnreadCount(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
 	var count int
-	if err := RouterConfig.DB.Conn.QueryRow(`SELECT COUNT(*) FROM notifications WHERE user_id=? AND read_at IS NULL AND archived_at IS NULL`, user.Id).Scan(&count); err != nil {
+	var latestID int64
+	if err := RouterConfig.DB.Conn.QueryRow(`SELECT COALESCE(SUM(CASE WHEN read_at IS NULL AND archived_at IS NULL THEN 1 ELSE 0 END),0), COALESCE(MAX(id),0) FROM notifications WHERE user_id=?`, user.Id).Scan(&count, &latestID); err != nil {
 		sendJobResponse(w, 500, nil, "Could not load unread count")
 		return
 	}
-	sendJobResponse(w, 200, map[string]int{"count": count}, "")
+	sendJobResponse(w, 200, map[string]interface{}{"count": count, "latestId": latestID}, "")
 }
 
 // Respond to the specific notification generation, not just the reusable

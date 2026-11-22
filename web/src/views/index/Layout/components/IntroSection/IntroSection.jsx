@@ -44,6 +44,13 @@ const IMPORT_STEPS = [
   { label: "Create Thumbnail", key: "thumbnail" },
 ];
 
+function currentJobStep(job) {
+  if (job.status === "succeeded") return 3;
+  if (job.phase === "thumbnail") return 2;
+  if (job.phase === "research" || (job.source !== "ai" && ["reserve", "chapters"].includes(job.phase))) return 1;
+  return 0;
+}
+
 // This project does not use the prop-types package.
 /* eslint-disable react/prop-types */
 function CourseJobs({ jobs, error, navigate }) {
@@ -55,20 +62,42 @@ function CourseJobs({ jobs, error, navigate }) {
       <div className='mt-3 flex flex-col gap-4'>
         {jobs.map((job) => {
           const active = job.status === "queued" || job.status === "running";
+          const running = job.status === "running";
+          const failed = job.status === "failed" || job.status === "interrupted";
           const steps = job.source === "ai" ? STEPS : IMPORT_STEPS;
-          const step = job.status === "succeeded" ? 3 : job.phase === "thumbnail" ? 2 : job.phase === "research" ? 1 : 0;
+          const step = currentJobStep(job);
           return (
             <div key={job.id} className='rounded-xl border border-dr-border p-4'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <h3 className='font-semibold text-dr-text'>{job.courseTitle || job.title || "Imported lesson"}</h3>
                 <span className='text-sm capitalize text-dr-text-muted'>{job.status}</span>
               </div>
-              <div className='mt-3 flex flex-wrap gap-3 text-xs text-dr-text-muted'>
-                {steps.map((item, index) => (
-                  <span key={item.key} className={index < step ? "text-dr-success" : index === step && active ? "text-dr-accent" : ""}>
-                    {index < step && <ion-icon name='checkmark-outline'></ion-icon>} {item.label}
-                  </span>
-                ))}
+              <div className='relative mt-6' aria-label='Course creation progress'>
+                <div aria-hidden='true' className='absolute left-0 right-0 top-4 flex px-[16.6667%]'>
+                  {steps.slice(0, -1).map((item, index) => (
+                    <div key={item.key} className={`h-0.5 flex-1 ${index < step - 1 ? "bg-dr-success" : "bg-dr-border"}`} />
+                  ))}
+                </div>
+                <ol className='relative flex items-start justify-between'>
+                  {steps.map((item, index) => {
+                    const isActive = running && index === step;
+                    const isCompleted = index < step;
+                    const isError = (failed && index === step) || (job.warning && index === steps.length - 1);
+                    const status = isError ? (job.warning && index === steps.length - 1 ? "thumbnail failed" : job.status) : isCompleted ? "completed" : isActive ? "in progress" : "pending";
+                    return (
+                      <li key={item.key} aria-current={isActive ? "step" : undefined} className='flex min-w-0 flex-1 flex-col items-center gap-2'>
+                        <div aria-hidden='true' className={`relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                          isError ? "bg-dr-danger text-white" : isCompleted ? "bg-dr-success text-white" : isActive ? "animate-pulse bg-dr-accent text-white" : "border border-dr-border bg-dr-surface text-dr-text-muted"
+                        }`}>
+                          {isError ? <ion-icon name='close-outline'></ion-icon> : isCompleted ? <ion-icon name='checkmark-outline'></ion-icon> : index + 1}
+                        </div>
+                        <span className={`text-center text-xs font-medium ${isError || isActive || isCompleted ? "text-dr-text" : "text-dr-text-muted"}`}>
+                          {item.label}<span className='sr-only'>: {status}</span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
               </div>
               {active && job.detail && <p className='mt-2 text-xs text-dr-text-muted'>{job.detail}</p>}
               {job.chapters?.length > 0 && (
@@ -522,21 +551,25 @@ export const IntroSection = () => {
             {/* Toggle to let the model search the web while elaborating chapters */}
             {mode === "ai" && (
               <div className='flex items-center justify-between'>
-                <span className='text-sm font-medium text-dr-text'>
+                <label htmlFor='search-web' className='text-sm font-medium text-dr-text'>
                   Search the web
-                </span>
+                </label>
                 <Switch
+                  id='search-web'
                   primary
+                  size='small'
                   checked={searchWeb}
                   onChange={setSearchWeb}
                   disabled={loading}
                 />
               </div>
             )}
-            <label className='flex items-center gap-2 text-sm font-medium text-dr-text'>
-              <input type='checkbox' checked={notifyEmail} onChange={(event) => setNotifyEmail(event.target.checked)} />
-              Email me when this course is ready
-            </label>
+            <div className='flex items-center justify-between gap-3'>
+              <label htmlFor='notify-email' className='text-sm font-medium text-dr-text'>
+                Email me when this course is ready
+              </label>
+              <Switch id='notify-email' primary size='small' checked={notifyEmail} onChange={setNotifyEmail} disabled={loading} />
+            </div>
             {/* Subject selector */}
             <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>Subjects</span>

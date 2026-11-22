@@ -1,5 +1,5 @@
-import React from "react";
-
+// The project does not use the prop-types package.
+/* eslint-disable react/prop-types */
 export const Switch = ({
   disabled = false,
   checked = false,
@@ -10,14 +10,12 @@ export const Switch = ({
   warning,
   success,
   color,
+  size = "default",
+  id,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   className = "",
 }) => {
-  const handleToggle = () => {
-    if (!disabled && onChange) {
-      onChange(!checked);
-    }
-  };
-
   const trackClass = primary
     ? "bg-blue-500/30 border-blue-500"
     : secondary
@@ -39,13 +37,9 @@ export const Switch = ({
 
   return (
     <div
-      className={`relative inline-block h-12 w-20 cursor-pointer ${
+      className={`relative inline-block shrink-0 cursor-pointer ${size === "small" ? "h-6 w-11" : "h-12 w-20"} ${
         disabled ? "cursor-not-allowed opacity-40" : ""
       } ${className}`}
-      onClick={handleToggle}
-      role='switch'
-      aria-checked={checked}
-      aria-disabled={disabled}
     >
       <div
         className={`absolute inset-0 rounded-full border transition-colors duration-150 ${
@@ -54,17 +48,25 @@ export const Switch = ({
         style={trackStyle}
       />
       <div
-        className={`absolute top-2 h-8 w-8 rounded-full transition-all duration-150 ${
-          checked ? "left-10" : "left-2"
+        className={`absolute rounded-full transition-all duration-150 ${
+          size === "small" ? "top-1 h-4 w-4" : "top-2 h-8 w-8"
+        } ${
+          size === "small" ? (checked ? "left-6" : "left-1") : (checked ? "left-10" : "left-2")
         } ${checked && (warning || success) ? "bg-dr-bg" : "bg-dr-text"}`}
       />
       <input
+        id={id}
         type='checkbox'
-        className='absolute inset-0 z-10 opacity-0 cursor-inherit'
+        role='switch'
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        className='peer absolute inset-0 z-10 h-full w-full cursor-inherit opacity-0'
         checked={checked}
-        onChange={() => {}}
+        onChange={(event) => onChange?.(event.target.checked)}
         disabled={disabled}
       />
+      <span className='pointer-events-none absolute inset-0 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-dr-accent/40 peer-focus-visible:ring-offset-2' />
     </div>
   );
 };
+/* eslint-enable react/prop-types */

@@ -1,24 +1,42 @@
 import { USER_STATUS_ACTIVE, USER_STATUS_PENDING, API_NOTIFICATIONS } from "@constants";
 import { initialAppData, AppContext } from "./appContext";
-import { useContext, useEffect, useState, useCallback } from "react";
+import { useContext, useEffect, useState, useCallback, useRef } from "react";
 import update from "immutability-helper";
 import { Toast } from "@ds";
+import { playNotificationSound } from "@utils";
 
 export const AppContextProvider = (props) => {
   const { children } = props;
 
   const [state, setState] = useState(initialAppData.state);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const notificationCursor = useRef({ token: null, latestId: null, request: 0, applied: 0 });
 
   const refreshNotifications = useCallback(async () => {
     if (!state.isAuthenticated) return;
     const token = localStorage.getItem("auth");
+    if (!token) return;
+    if (notificationCursor.current.token !== token) {
+      notificationCursor.current = { token, latestId: null, request: 0, applied: 0 };
+    }
+    const cursor = notificationCursor.current;
+    const request = ++cursor.request;
     try {
       const response = await fetch(`${API_NOTIFICATIONS}/unread-count`, {
         headers: { Authorization: "Bearer " + token },
       });
       const result = await response.json();
-      if (response.ok && result.success && localStorage.getItem("auth") === token) setUnreadNotifications(result.data.count);
+      if (response.ok && result.success && localStorage.getItem("auth") === token && notificationCursor.current === cursor) {
+        const latestId = result.data.latestId;
+        if (typeof latestId === "number") {
+          if (cursor.latestId !== null && latestId > cursor.latestId) playNotificationSound();
+          cursor.latestId = Math.max(cursor.latestId ?? 0, latestId);
+        }
+        if (request > cursor.applied) {
+          cursor.applied = request;
+          setUnreadNotifications(result.data.count);
+        }
+      }
     } catch {
       // Keep the previous count until the next successful refresh.
     }
@@ -127,6 +145,7 @@ export const AppContextProvider = (props) => {
   // Logout function
   function logout() {
     localStorage.removeItem("auth");
+    notificationCursor.current = { token: null, latestId: null, request: 0, applied: 0 };
     setUnreadNotifications(0);
     setState((prevState) =>
       update(prevState, {
