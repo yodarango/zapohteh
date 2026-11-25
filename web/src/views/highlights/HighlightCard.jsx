@@ -115,10 +115,10 @@ export const HighlightCard = ({
 
   return (
     <>
-      <article className='w-full overflow-hidden rounded-2xl border border-dr-border bg-white min-[700px]:min-w-[330px] min-[700px]:max-w-[500px] min-[700px]:flex-1'>
-        <header className='flex items-center gap-3 border-b border-black/10 px-4 py-3'>
+      <article className='min-w-0 rounded-xl border border-dr-border bg-white'>
+        <header className='flex items-center gap-2 px-3 pt-3'>
           <div
-            className='h-10 w-10 shrink-0 rounded-full border-2 border-black/10'
+            className='h-4 w-4 shrink-0 rounded-full border border-black/10'
             style={{ backgroundColor: highlightColor }}
             aria-hidden='true'
           />
@@ -141,7 +141,7 @@ export const HighlightCard = ({
             )}
           </div>
 
-          <div className='flex gap-2=1'>
+          <div className='flex shrink-0 gap-1'>
             <button
               type='button'
               onClick={openEditModal}
@@ -149,7 +149,7 @@ export const HighlightCard = ({
               aria-label='Edit highlight'
               title='Edit highlight'
             >
-              <ion-icon name='create-outline' className='text-xl'></ion-icon>
+              <ion-icon name='create-outline' className='text-lg'></ion-icon>
             </button>
             <button
               type='button'
@@ -158,39 +158,17 @@ export const HighlightCard = ({
               aria-label='Delete highlight'
               title='Delete highlight'
             >
-              <ion-icon name='trash-outline' className='text-xl'></ion-icon>
+              <ion-icon name='trash-outline' className='text-lg'></ion-icon>
             </button>
           </div>
         </header>
 
-        <div className='relative aspect-square overflow-hidden bg-white'>
-          {highlight.coverImagePath ? (
-            <img
-              src={highlight.coverImagePath}
-              alt={highlight.courseTitle}
-              className='absolute inset-0 h-full w-full object-cover opacity-30'
-            />
-          ) : (
-            <div className='absolute inset-0 flex items-center justify-center bg-white'>
-              <ion-icon
-                name='image-outline'
-                className='text-5xl text-black/20'
-              />
-            </div>
-          )}
-
-          <div className='absolute inset-0 bg-white/20' />
-
-          <div className='relative z-10 flex h-full items-center justify-center p-8'>
-            <blockquote className='max-w-md text-center text-xl font-bold leading-relaxed text-black sm:text-2xl'>
-              “{highlight.text}”
-            </blockquote>
-          </div>
-        </div>
-
-        <div className='border-t border-black/10 bg-white px-4 py-4'>
+        <div className='px-3 pb-3 pt-2'>
+          <blockquote className='break-words text-sm leading-relaxed text-dr-text'>
+            “{highlight.text}”
+          </blockquote>
           {highlight.note && (
-            <p className='text-sm leading-relaxed text-black'>
+            <p className='mt-2 break-words border-t border-dr-border pt-2 text-xs leading-relaxed text-dr-text-muted'>
               {highlight.subjects && highlight.subjects.length > 0 ? (
                 highlight.subjects.map((subject) => (
                   <span

@@ -9,17 +9,20 @@ import { authHeaders, useGet } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 import { FilterDropdowns } from "../FilterDropdowns";
 import { HighlightCard } from "./HighlightCard";
+import { useStoredFilters } from "../useStoredFilters";
 
 const PAGE_SIZE = 20;
 
 export const HighlightsView = () => {
   const { showToast } = useAppContext();
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedSubjects, setSelectedSubjects] = useState(new Set());
-  const [selectedStatus, setSelectedStatus] = useState("");
-  const [selectedYears, setSelectedYears] = useState(new Set());
-  const [selectedMonths, setSelectedMonths] = useState(new Set());
+  const {
+    query, setQuery, debouncedQuery,
+    selectedSubjects, setSelectedSubjects,
+    selectedStatus, setSelectedStatus,
+    selectedYears, setSelectedYears,
+    selectedMonths, setSelectedMonths,
+    hasFilters, clearFilters,
+  } = useStoredFilters("zapohteh-highlights-filters");
   const [highlights, setHighlights] = useState([]);
   const [userHighlights, setUserHighlights] = useState([]);
   const [stylesError, setStylesError] = useState(null);
@@ -52,11 +55,6 @@ export const HighlightsView = () => {
     (!subjectsLoading && !Array.isArray(subjectsData) && "Failed to load subjects");
   const loadedCount = highlights.length;
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query), 1000);
-    return () => clearTimeout(timer);
-  }, [query]);
-
   const filterParams = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedQuery) params.set("search", debouncedQuery);
@@ -66,18 +64,6 @@ export const HighlightsView = () => {
     if (selectedMonths.size) params.set("month", [...selectedMonths].join(","));
     return params.toString();
   }, [debouncedQuery, selectedSubjects, selectedStatus, selectedYears, selectedMonths]);
-
-  const hasFilters = query || debouncedQuery || selectedSubjects.size ||
-    selectedStatus || selectedYears.size || selectedMonths.size;
-
-  const clearFilters = () => {
-    setQuery("");
-    setDebouncedQuery("");
-    setSelectedSubjects(new Set());
-    setSelectedStatus("");
-    setSelectedYears(new Set());
-    setSelectedMonths(new Set());
-  };
 
   const refreshHighlights = () => setRefreshVersion((version) => version + 1);
 
@@ -293,7 +279,7 @@ export const HighlightsView = () => {
       )}
 
       {!initialLoading && highlights.length > 0 && (
-        <div className='grid grid-cols-1 gap-6 min-[700px]:grid-cols-2 xl:grid-cols-3'>
+        <div className='grid grid-cols-1 items-start gap-3 min-[700px]:grid-cols-2 xl:grid-cols-3'>
           {highlights.map((highlight) => (
             <HighlightCard
               key={highlight.id}

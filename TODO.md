@@ -5,3 +5,7 @@
 # UP NEXT
 
 - come diventare questo il mio hob per libri, la mia libreria e le note di questo libro, etc. sarebbe una figatta implementare una funzionalita dove li dico al app quale libro sto legendo, e poi, fare una foto di qualsiasi pagina di questo libro e fare che la parte che e highlighted si entri cme una nota nel sistema
+
+- add "left off" bookmarks anywhere in the text not just in the chapters. perhaps i can get rid of the "read chapter" button if thi is the case
+
+-implement markdown shortcuts like i:opacity:.6 that creates <i style="opacity:.6">:cursor here:</>

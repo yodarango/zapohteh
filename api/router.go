@@ -1017,9 +1017,19 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bibliography, err := research.ReadBibliography()
+	if err != nil {
+		httpResponse.Error = fmt.Sprintf("%v", err)
+		httpResponse.Success = false
+		httpResponse.Data = nil
+		httpResponse.Send(w)
+		return
+	}
+
 	data := map[string]interface{}{
 		"topic":          name,
 		"content":        content,
+		"bibliography":   bibliography,
 		"coverImagePath": models.GetCoverImagePath(ownerId, name),
 		"language":       models.GetCourseLanguage(ownerId, name),
 		"role":           role,

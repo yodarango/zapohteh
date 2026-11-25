@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -68,6 +69,7 @@ const (
 )
 
 const chaptersFileName = "chapters.md"
+const bibliographyFileName = "bibliography.md"
 const donePrefix = "✅ "
 const imagesDirName = "images"
 
@@ -324,6 +326,9 @@ func (r *Research) Run() error {
 
 	err = r.ElaborateChapters()
 	if err != nil {
+		return err
+	}
+	if err := r.writeBibliography(); err != nil {
 		return err
 	}
 
@@ -593,34 +598,132 @@ func (r *Research) elaborateChapter(folder, chapter string, done, allChapters []
 
 	systemDescription := fmt.Sprintf(`You are a research helper machine that helps analyze a specific chapter at a time from a subject given by the user. Your job is to describe it accurately and objectively.
 	The user will give you the description of the topic they are interested in, as well as the depth of your description. Please respect their depth description and do not provide more or less details than needed.
-	Cite your sources in chicago style and make sure to use reliable and scholarly ones.
+	Cite reliable, scholarly sources in Chicago notes and bibliography style. Put numbered citations in the chapter text as Markdown links to matching notes at the end of the chapter. For chapter %d, link note 1 as [1](#chapter-%d-note-1), note 2 as [2](#chapter-%d-note-2), and so on. Put the notes under a level-three heading (### Notes, translated into the requested language) as a numbered list, beginning each item with the corresponding HTML anchor, for example: 1. <a id="chapter-%d-note-1"></a> Full Chicago note. Give every cited work a complete note on first mention in this chapter.
+	Return ONLY a valid JSON object with exactly these fields: "chapter_markdown" (the chapter text and its notes as a Markdown string) and "sources" (an array of full Chicago bibliography entries as strings, one per distinct source cited in the notes). Every source in the notes must have a corresponding entry in sources, and sources must not contain works that are not cited. Use full bibliographic details only when known, including a URL or DOI when known. Never invent source details or URLs. If no source can be identified, return an empty sources array and do not invent citations.
+	Use level-three or lower headings for sections within the chapter; do not use level-two headings.
 	When the user provides the content of the previous chapter, write the current chapter so it flows naturally from it. Do not repeat the previous chapter content; build upon it so the reader feels a continuous narrative.
 	Do not introduce the topic, chapter title, or purpose of the chpater. For example, do not say this chapters delves into..., or this chapter explains... Simply describe the content. THat's it.
 	The user may give you a list of chapters that they already have the description for so you know what they are missing.
 	Remember, you must omit the title of the chapter. just elaborate on it. NEVERE NEVER give the same title to more than one chapter.
 	Never address the user nor give any comments that are not text requested. Never compliment them nor acknowledge them. Stick to the description.
-	%s`, r.contentInstructions())
+	%s`, chapterIndex, chapterIndex, chapterIndex, chapterIndex, r.contentInstructions())
 
 	// only swap to the web-search enabled model when the user opted in
 	service := lib.NewOpenAIService()
-	var description string
+	var result chapterResearchResponse
 	var err error
-	if r.SearchWeb {
-		description, err = service.AskWithWebSearch(systemDescription, prompt)
-	} else {
-		description, err = service.Ask(systemDescription, prompt)
+	for attempt := 0; attempt < 2; attempt++ {
+		var response string
+		if r.SearchWeb {
+			response, err = service.AskWithWebSearch(systemDescription, prompt)
+		} else {
+			response, err = service.Ask(systemDescription, prompt)
+		}
+		if err != nil {
+			return err
+		}
+		result, err = parseChapterResearchResponse(response)
+		if err == nil {
+			break
+		}
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid chapter response for %q: %w", chapter, err)
+	}
+
+	sourceFile := filepath.Join(folder, fmt.Sprintf("%d_sources.json", chapterIndex))
+	sources, err := json.Marshal(result.Sources)
+	if err != nil {
+		return fmt.Errorf("failed to encode chapter sources: %w", err)
+	}
+	if err := os.WriteFile(sourceFile, sources, 0644); err != nil {
+		return fmt.Errorf("failed to write chapter sources: %w", err)
 	}
 
 	chapterFile := filepath.Join(folder, fmt.Sprintf("%d_%s.md", chapterIndex, utils.ToCamelCase(chapter)))
-	err = os.WriteFile(chapterFile, []byte(description), 0644)
+	err = os.WriteFile(chapterFile, []byte(result.ChapterMarkdown), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write chapter file: %w", err)
 	}
 
 	return nil
+}
+
+type chapterResearchResponse struct {
+	ChapterMarkdown string   `json:"chapter_markdown"`
+	Sources         []string `json:"sources"`
+}
+
+func parseChapterResearchResponse(response string) (chapterResearchResponse, error) {
+	var result chapterResearchResponse
+	response = strings.TrimSpace(response)
+	if strings.HasPrefix(response, "```json") && strings.HasSuffix(response, "```") {
+		response = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(response, "```json"), "```"))
+	}
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return result, err
+	}
+	if strings.TrimSpace(result.ChapterMarkdown) == "" || result.Sources == nil {
+		return result, fmt.Errorf("chapter_markdown and sources are required")
+	}
+	for i, source := range result.Sources {
+		result.Sources[i] = strings.Join(strings.Fields(source), " ")
+		if result.Sources[i] == "" {
+			return result, fmt.Errorf("source entries must not be empty")
+		}
+	}
+	return result, nil
+}
+
+// writeBibliography compiles the source entries returned with each chapter.
+// It only deduplicates equivalent text; it does not invent or verify citations.
+func (r *Research) writeBibliography() error {
+	entries := make(map[string]string)
+	for i := range r.Chapters {
+		path := filepath.Join(r.folderPath(), fmt.Sprintf("%d_sources.json", i+1))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read chapter sources: %w", err)
+		}
+		var sources []string
+		if err := json.Unmarshal(data, &sources); err != nil {
+			return fmt.Errorf("failed to parse chapter sources: %w", err)
+		}
+		for _, source := range sources {
+			entry := strings.Join(strings.Fields(source), " ")
+			key := strings.ToLower(entry)
+			if entry != "" {
+				if _, exists := entries[key]; !exists {
+					entries[key] = entry
+				}
+			}
+		}
+	}
+	keys := make([]string, 0, len(entries))
+	for key := range entries {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var bibliography strings.Builder
+	for _, key := range keys {
+		bibliography.WriteString("- " + entries[key] + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(r.folderPath(), bibliographyFileName), []byte(bibliography.String()), 0644); err != nil {
+		return fmt.Errorf("failed to write bibliography: %w", err)
+	}
+	return nil
+}
+
+// ReadBibliography returns an empty string for older and imported lessons.
+func (r *Research) ReadBibliography() (string, error) {
+	data, err := os.ReadFile(filepath.Join(r.folderPath(), bibliographyFileName))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to read bibliography: %w", err)
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 // chapterIndexFromFile reads chapters.md and returns the 1-based index of the given

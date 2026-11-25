@@ -156,7 +156,13 @@ export const ChatPanel = ({ topic, chapters }) => {
           maxHeight={160}
           className='text-sm'
         />
-        <Button primary className='w-full' onClick={send} isLoading={loading}>
+        <Button
+          primary
+          className='w-full'
+          onClick={send}
+          isLoading={loading}
+          loadingColor='white'
+        >
           Send
         </Button>
       </div>

@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { marked } from "marked";
 import {
@@ -122,6 +122,7 @@ export const LearnView = () => {
   const xKeyHeld = useRef(false);
 
   const [content, setContent] = useState("");
+  const [bibliography, setBibliography] = useState("");
   const [coverImagePath, setCoverImagePath] = useState("");
   const [courseLanguage, setCourseLanguage] = useState("");
   // declared chapter titles and whether the lesson was imported from a source;
@@ -178,7 +179,7 @@ export const LearnView = () => {
   const canOpenInApp = access === "owner" || access === "collaborator";
   const isAuthenticated = state.isAuthenticated;
 
-  const renderMarkdownWithHighlights = (markdown, chapter = "") => {
+  const renderMarkdownWithHighlights = useCallback((markdown, chapter = "") => {
     if (!markdown) return "";
     const html = marked.parse(markdown);
     if (!highlights.length) return html;
@@ -205,7 +206,7 @@ export const LearnView = () => {
         const userHighlight = userHighlights.find((h) => h.id === highlightId);
         const color = directColor || userHighlight?.color || "#ffeb3b";
         const highlightLabel = label || userHighlight?.label || "";
-        const walker = document.createTreeWalker(
+        const walker = doc.createTreeWalker(
           body,
           NodeFilter.SHOW_TEXT,
           null,
@@ -255,7 +256,7 @@ export const LearnView = () => {
           .forEach(({ node: textNode, start, end, showActions }) => {
             textNode.splitText(end);
             const selected = textNode.splitText(start);
-            const mark = document.createElement("mark");
+            const mark = doc.createElement("mark");
             mark.className =
               "highlight rounded-md px-1 py-0.5 box-decoration-clone font-normal";
             mark.style.backgroundColor = color;
@@ -264,12 +265,12 @@ export const LearnView = () => {
             if (note) mark.setAttribute("title", note);
             if (!showActions) return;
 
-            const actions = document.createElement("span");
+            const actions = doc.createElement("span");
             actions.className =
               "ml-1 inline-flex whitespace-nowrap align-middle items-center gap-1";
 
             if (!isShared) {
-              const editBtn = document.createElement("button");
+              const editBtn = doc.createElement("button");
               editBtn.className =
                 "highlight-edit inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
               editBtn.setAttribute("data-highlight-text", text);
@@ -283,7 +284,7 @@ export const LearnView = () => {
             }
 
             if (note) {
-              const noteBtn = document.createElement("button");
+              const noteBtn = doc.createElement("button");
               noteBtn.className =
                 "highlight-note inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-accent text-white text-[10px] leading-none";
               noteBtn.setAttribute("data-highlight-note", note);
@@ -298,7 +299,7 @@ export const LearnView = () => {
             }
 
             if (!isShared) {
-              const deleteBtn = document.createElement("button");
+              const deleteBtn = doc.createElement("button");
               deleteBtn.className =
                 "highlight-delete inline-flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-dr-text text-dr-surface text-[10px] leading-none";
               deleteBtn.setAttribute("data-highlight-text", text);
@@ -319,7 +320,20 @@ export const LearnView = () => {
     );
 
     return body.innerHTML;
-  };
+  }, [highlights, userHighlights, isShared]);
+
+  const { intro, chapters } = useMemo(
+    () => splitChapters(content, isImportedLesson ? chapterTitles : null),
+    [content, isImportedLesson, chapterTitles],
+  );
+  const renderedIntro = useMemo(
+    () => renderMarkdownWithHighlights(intro),
+    [intro, renderMarkdownWithHighlights],
+  );
+  const renderedChapters = useMemo(
+    () => chapters.map((chapter) => renderMarkdownWithHighlights(chapter.body, chapter.title)),
+    [chapters, renderMarkdownWithHighlights],
+  );
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -366,6 +380,7 @@ export const LearnView = () => {
       const d = result.data;
       setSharedData(d);
       setContent(d.content || "");
+      setBibliography(d.bibliography || "");
       setCoverImagePath(d.coverImagePath || "");
       setCourseLanguage(d.language || "");
       setChapterTitles(d.chapters || null);
@@ -434,6 +449,7 @@ export const LearnView = () => {
           });
         } else {
           setContent(topicResult.data?.content || "");
+          setBibliography(topicResult.data?.bibliography || "");
           setCoverImagePath(topicResult.data?.coverImagePath || "");
           setCourseLanguage(topicResult.data?.language || "");
           setShareToken(topicResult.data?.shareToken || "");
@@ -746,10 +762,6 @@ export const LearnView = () => {
     );
   }
 
-  const { intro, chapters } = splitChapters(
-    content,
-    isImportedLesson ? chapterTitles : null,
-  );
   const usedChapterIds = new Set();
   const chapterIds = chapters.map((chapter) => {
     const base = chapterSlug(chapter.title) || "chapter";
@@ -917,7 +929,7 @@ export const LearnView = () => {
         <body>
           <h1>${topic}</h1>
           ${cover}
-          <div class="research-content">${introHtml}${chaptersHtml}</div>
+          <div class="research-content">${introHtml}${chaptersHtml}${bibliography ? `<h2>Bibliography</h2>${marked.parse(bibliography)}` : ""}</div>
         </body>
       </html>
     `.replace(/src="\/data\//g, `src="${backendOrigin}/data/`);
@@ -1310,7 +1322,7 @@ export const LearnView = () => {
                     <div
                       className='research-content'
                       dangerouslySetInnerHTML={{
-                        __html: renderMarkdownWithHighlights(intro),
+                        __html: renderedIntro,
                       }}
                     />
                   )}
@@ -1329,10 +1341,7 @@ export const LearnView = () => {
                       <div
                         className='research-content'
                         dangerouslySetInnerHTML={{
-                          __html: renderMarkdownWithHighlights(
-                            chapter.body,
-                            chapter.title,
-                          ),
+                          __html: renderedChapters[chapterIndex],
                         }}
                       />
                       <div className='mb-3 flex items-start justify-between gap-4'>
@@ -1359,6 +1368,12 @@ export const LearnView = () => {
                       </div>
                     </section>
                   ))}
+                  {bibliography && (
+                    <section className='mt-8'>
+                      <h4 className='mb-2 text-xl font-bold text-blue-500/80'>Bibliography</h4>
+                      <div className='research-content' dangerouslySetInnerHTML={{ __html: marked.parse(bibliography) }} />
+                    </section>
+                  )}
                 </div>
 
                 {/* Right column: Actions & Chapters */}
@@ -1660,7 +1675,7 @@ export const LearnView = () => {
           <div
             className='research-content'
             dangerouslySetInnerHTML={{
-              __html: renderMarkdownWithHighlights(intro),
+              __html: renderedIntro,
             }}
           />
         )}
@@ -1682,10 +1697,7 @@ export const LearnView = () => {
               <div
                 className='research-content'
                 dangerouslySetInnerHTML={{
-                  __html: renderMarkdownWithHighlights(
-                    chapter.body,
-                    chapter.title,
-                  ),
+                  __html: renderedChapters[chapterIndex],
                 }}
               />
               {/* chapter heading with its summary image action */}
@@ -1731,6 +1743,12 @@ export const LearnView = () => {
             </section>
           );
         })}
+        {bibliography && (
+          <section className='mt-8'>
+            <h4 className='mb-2 text-xl font-bold text-blue-500/80'>Bibliography</h4>
+            <div className='research-content' dangerouslySetInnerHTML={{ __html: marked.parse(bibliography) }} />
+          </section>
+        )}
       </div>
 
       {showHighlightPopup && (

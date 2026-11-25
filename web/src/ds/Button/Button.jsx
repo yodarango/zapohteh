@@ -11,6 +11,7 @@ export const Button = (props) => {
     success,
     className = "",
     isLoading,
+    loadingColor,
     ...restOfProps
   } = props;
 
@@ -34,7 +35,7 @@ export const Button = (props) => {
   return (
     <button className={className} {...restOfProps}>
       <IfElse condition={isLoading}>
-        <Loading size={30} />
+        <Loading size={30} color={loadingColor} />
         <> {children}</>
       </IfElse>
     </button>

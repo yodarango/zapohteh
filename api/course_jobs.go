@@ -104,7 +104,7 @@ func CourseJobsHandler(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(constants.USER_CONTEXT_AUTH_KEY).(*models.AuthUser)
 	db := RouterConfig.DB.Conn
 	if r.Method == http.MethodGet {
-		rows, err := db.Query(`SELECT `+jobColumns+` FROM course_jobs j LEFT JOIN course_job_notifications n ON n.job_id=j.id WHERE j.user_id=? ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END, j.id DESC LIMIT 50`, user.Id)
+		rows, err := db.Query(`SELECT `+jobColumns+` FROM course_jobs j LEFT JOIN course_job_notifications n ON n.job_id=j.id WHERE j.user_id=? ORDER BY CASE WHEN j.status IN ('queued','running') THEN 0 ELSE 1 END, j.id DESC LIMIT 3`, user.Id)
 		if err != nil {
 			sendJobResponse(w, 500, nil, "Could not load creation jobs")
 			return

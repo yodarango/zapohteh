@@ -7,7 +7,10 @@ import {
   ROUTE_LEARN,
 } from "@constants";
 import { useGet } from "@utils";
+import { readStoredJSON, removeStoredItem, writeStoredJSON } from "@utils/localStorage";
 import { useAppContext } from "@views/context/appContextProvider";
+
+const FORM_STATE_KEY = "zapohteh-lesson-form";
 
 // Available research depth levels for a topic
 const RESEARCH_LEVELS = [
@@ -127,59 +130,38 @@ function CourseJobs({ jobs, error, navigate }) {
 export const IntroSection = () => {
   const navigate = useNavigate();
   const { showToast } = useAppContext();
-  const [titles, setTitles] = useState({ ai: "", pdf: "", url: "" });
-  const [input, setInput] = useState("");
-  const [level, setLevel] = useState("medium");
-  const [language, setLanguage] = useState("English");
-  const [writingStyle, setWritingStyle] = useState("academic");
-  const [searchWeb, setSearchWeb] = useState(false);
+  const [saved] = useState(() => readStoredJSON(FORM_STATE_KEY) || {});
+  const [mode, setMode] = useState(() =>
+    MODES.some((option) => option.value === saved.mode) ? saved.mode : "ai",
+  );
+  const [titles, setTitles] = useState(() => {
+    if (saved.titles && typeof saved.titles === "object") {
+      return {
+        ai: typeof saved.titles.ai === "string" ? saved.titles.ai : "",
+        pdf: typeof saved.titles.pdf === "string" ? saved.titles.pdf : "",
+        url: typeof saved.titles.url === "string" ? saved.titles.url : "",
+      };
+    }
+    return { ai: "", pdf: "", url: "", [mode]: typeof saved.title === "string" ? saved.title : "" };
+  });
+  const [input, setInput] = useState(() => typeof saved.input === "string" ? saved.input : "");
+  const [level, setLevel] = useState(() => RESEARCH_LEVELS.some((option) => option.value === saved.level) ? saved.level : "medium");
+  const [language, setLanguage] = useState(() => LANGUAGES.includes(saved.language) ? saved.language : "English");
+  const [writingStyle, setWritingStyle] = useState(() => WRITING_STYLES.some((option) => option.value === saved.writingStyle) ? saved.writingStyle : "academic");
+  const [searchWeb, setSearchWeb] = useState(() => saved.searchWeb === true);
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [jobsError, setJobsError] = useState("");
-  const [notifyEmail, setNotifyEmail] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState(() => saved.notifyEmail === true);
   const requestRef = useRef(null);
-  const [selectedSubjects, setSelectedSubjects] = useState(new Set());
-  const [mode, setMode] = useState("ai");
-  const [url, setUrl] = useState("");
+  const [selectedSubjects, setSelectedSubjects] = useState(() =>
+    new Set(Array.isArray(saved.selectedSubjects) ? saved.selectedSubjects.filter(Number.isInteger) : []),
+  );
+  const [url, setUrl] = useState(() => typeof saved.url === "string" ? saved.url : "");
   // the selected PDF file is intentionally not persisted to localStorage
   const [pdfFile, setPdfFile] = useState(null);
   const [isDraggingPDF, setIsDraggingPDF] = useState(false);
   const title = titles[mode];
-
-  const FORM_STATE_KEY = "zapohteh-lesson-form";
-
-  // Load any previously saved form state from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(FORM_STATE_KEY);
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved);
-      if (parsed.titles && typeof parsed.titles === "object") {
-        setTitles({
-          ai: typeof parsed.titles.ai === "string" ? parsed.titles.ai : "",
-          pdf: typeof parsed.titles.pdf === "string" ? parsed.titles.pdf : "",
-          url: typeof parsed.titles.url === "string" ? parsed.titles.url : "",
-        });
-      } else if (typeof parsed.title === "string") {
-        const savedMode = MODES.some((option) => option.value === parsed.mode)
-          ? parsed.mode
-          : "ai";
-        setTitles((previous) => ({ ...previous, [savedMode]: parsed.title }));
-      }
-      if (parsed.input) setInput(parsed.input);
-      if (parsed.level) setLevel(parsed.level);
-      if (parsed.language) setLanguage(parsed.language);
-      if (parsed.writingStyle) setWritingStyle(parsed.writingStyle);
-      if (typeof parsed.searchWeb === "boolean") setSearchWeb(parsed.searchWeb);
-      if (MODES.some((option) => option.value === parsed.mode)) setMode(parsed.mode);
-      if (parsed.url) setUrl(parsed.url);
-      if (parsed.selectedSubjects) {
-        setSelectedSubjects(new Set(parsed.selectedSubjects));
-      }
-    } catch (err) {
-      console.error("Failed to parse saved lesson form", err);
-    }
-  }, []);
 
   // Persist form state to localStorage whenever it changes
   useEffect(() => {
@@ -190,11 +172,12 @@ export const IntroSection = () => {
       language,
       writingStyle,
       searchWeb,
+      notifyEmail,
       mode,
       url,
       selectedSubjects: Array.from(selectedSubjects),
     };
-    localStorage.setItem(FORM_STATE_KEY, JSON.stringify(state));
+    writeStoredJSON(FORM_STATE_KEY, state);
   }, [
     titles,
     input,
@@ -202,6 +185,7 @@ export const IntroSection = () => {
     language,
     writingStyle,
     searchWeb,
+    notifyEmail,
     mode,
     url,
     selectedSubjects,
@@ -317,7 +301,7 @@ export const IntroSection = () => {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.errors || "Could not queue course");
       requestRef.current = null;
-      localStorage.removeItem(FORM_STATE_KEY);
+      removeStoredItem(FORM_STATE_KEY);
       setPdfFile(null);
       showToast({ type: "success", message: "Course queued. You can safely leave this page." });
       await loadJobs();
@@ -436,6 +420,11 @@ export const IntroSection = () => {
                 {pdfFile && (
                   <p className='text-xs text-dr-text-muted'>
                     Selected: {pdfFile.name}
+                  </p>
+                )}
+                {!pdfFile && (
+                  <p className='text-xs text-dr-text-muted'>
+                    PDF files must be selected again after reloading the page.
                   </p>
                 )}
               </div>

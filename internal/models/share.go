@@ -15,15 +15,16 @@ import (
 // or "collaborator" for users who can already open the lesson, and "shared" for
 // authenticated users who only have the public link.
 type SharedCourse struct {
-	Title          string             `json:"title"`
-	Content        string             `json:"content"`
-	CoverImagePath string             `json:"coverImagePath"`
-	Language       string             `json:"language"`
-	Notes          []SharedNote       `json:"notes"`
-	Highlights     []SharedHighlight  `json:"highlights"`
-	UserHighlights []UserHighlight    `json:"userHighlights"`
-	Access         string             `json:"access"`
-	Owner          string             `json:"owner"`
+	Title          string            `json:"title"`
+	Content        string            `json:"content"`
+	Bibliography   string            `json:"bibliography"`
+	CoverImagePath string            `json:"coverImagePath"`
+	Language       string            `json:"language"`
+	Notes          []SharedNote      `json:"notes"`
+	Highlights     []SharedHighlight `json:"highlights"`
+	UserHighlights []UserHighlight   `json:"userHighlights"`
+	Access         string            `json:"access"`
+	Owner          string            `json:"owner"`
 	// Chapters lists the declared chapter titles in order and Imported reports
 	// whether the lesson came from a source import; the lesson view uses them
 	// to tell chapter headings apart from structural source headings.
@@ -158,6 +159,10 @@ func GetSharedCourse(token string, viewer *AuthUser) (*SharedCourse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load shared lesson content: %w", err)
 	}
+	bibliography, err := research.ReadBibliography()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load shared lesson bibliography: %w", err)
+	}
 
 	access := "anonymous"
 	if viewer != nil {
@@ -181,6 +186,7 @@ func GetSharedCourse(token string, viewer *AuthUser) (*SharedCourse, error) {
 	shared := &SharedCourse{
 		Title:          title,
 		Content:        content,
+		Bibliography:   bibliography,
 		Notes:          []SharedNote{},
 		Highlights:     []SharedHighlight{},
 		UserHighlights: []UserHighlight{},

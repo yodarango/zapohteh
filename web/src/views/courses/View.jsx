@@ -19,6 +19,7 @@ import {
 import { useGet, formatLocalTime } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 import { FilterDropdowns } from "../FilterDropdowns";
+import { useStoredFilters } from "../useStoredFilters";
 
 // Soft background tints rotated across the course cards to echo the reference
 // design's colorful thumbnails.
@@ -103,12 +104,14 @@ const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
       <div className='flex flex-col gap-0.5 text-xs text-dr-text-muted'>
         <span>Created: {formatLocalTime(course.createdAt)}</span>
 
-        <span>
-          Last read:{" "}
-          {course.lastReadAt
-            ? formatLocalTime(course.lastReadAt)
-            : "Not started"}
-        </span>
+        {!(course.totalChapters > 0 && course.readChapters === course.totalChapters) && (
+          <span>
+            Last read:{" "}
+            {course.lastReadAt
+              ? formatLocalTime(course.lastReadAt)
+              : "Not started"}
+          </span>
+        )}
 
         {course.completedAt && (
           <span className='text-dr-success'>
@@ -208,17 +211,14 @@ const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
  */
 export const CoursesView = () => {
   const { showToast } = useAppContext();
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedSubjects, setSelectedSubjects] = useState(new Set());
-  const [selectedStatus, setSelectedStatus] = useState("");
-  const [selectedYears, setSelectedYears] = useState(new Set());
-  const [selectedMonths, setSelectedMonths] = useState(new Set());
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query), 1000);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const {
+    query, setQuery, debouncedQuery,
+    selectedSubjects, setSelectedSubjects,
+    selectedStatus, setSelectedStatus,
+    selectedYears, setSelectedYears,
+    selectedMonths, setSelectedMonths,
+    hasFilters, clearFilters,
+  } = useStoredFilters("zapohteh-courses-filters");
 
   const { data: subjectsData } = useGet({ url: API_GET_SUBJECTS });
   const subjects = subjectsData || [];
@@ -370,23 +370,6 @@ export const CoursesView = () => {
     });
     return Array.from(years).sort((a, b) => a - b);
   }, [allCourses]);
-
-  const hasFilters =
-    query ||
-    debouncedQuery ||
-    selectedSubjects.size > 0 ||
-    selectedStatus ||
-    selectedYears.size > 0 ||
-    selectedMonths.size > 0;
-
-  const clearFilters = () => {
-    setQuery("");
-    setDebouncedQuery("");
-    setSelectedSubjects(new Set());
-    setSelectedStatus("");
-    setSelectedYears(new Set());
-    setSelectedMonths(new Set());
-  };
 
   const handleDelete = async () => {
     if (!courseToDelete) return;
