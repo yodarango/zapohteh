@@ -126,7 +126,6 @@ export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, 
               <ion-icon name='document-text-outline' className='text-lg'></ion-icon>
               <span className={compact ? "sr-only" : "flex-1"}>Course notes</span>
             </button>
-            {notesOpen && <NotesPanel key={studyMatch.params.topic} topic={studyMatch.params.topic} />}
           </div>
         )}
       </nav>
@@ -195,9 +194,41 @@ export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, 
 };
 
 export const Sidebar = ({ onClose, compact = false, notesOpen = false, onNotesToggle, onExpandToggle }) => {
+  const studyMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+
   return (
     <aside className='flex h-full w-full shrink-0 flex-col overflow-hidden border-r border-dr-border bg-dr-surface'>
-      <SidebarNav onClose={onClose} showCloseButton compact={compact} notesOpen={notesOpen} onNotesToggle={onNotesToggle} onExpandToggle={onExpandToggle} />
+      {studyMatch && notesOpen ? (
+        <>
+          <div className='flex shrink-0 items-center gap-2 border-b border-dr-border px-4 py-4'>
+            <button
+              type='button'
+              onClick={onNotesToggle}
+              aria-label='Back to navigation'
+              title='Back to navigation'
+              className='flex h-9 w-9 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text'
+            >
+              <ion-icon name='chevron-back-outline' className='text-xl'></ion-icon>
+            </button>
+            <h2 className='flex-1 font-semibold text-dr-text'>Course notes</h2>
+            {onClose && (
+              <button
+                type='button'
+                onClick={onClose}
+                aria-label='Close navigation'
+                className='flex h-9 w-9 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
+              >
+                <ion-icon name='close-outline' className='text-xl'></ion-icon>
+              </button>
+            )}
+          </div>
+          <div className='min-h-0 flex-1 overflow-y-auto px-3 pt-3'>
+            <NotesPanel key={studyMatch.params.topic} topic={studyMatch.params.topic} />
+          </div>
+        </>
+      ) : (
+        <SidebarNav onClose={onClose} showCloseButton compact={compact} notesOpen={notesOpen} onNotesToggle={onNotesToggle} onExpandToggle={onExpandToggle} />
+      )}
     </aside>
   );
 };
