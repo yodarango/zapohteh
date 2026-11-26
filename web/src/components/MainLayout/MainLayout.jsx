@@ -141,7 +141,7 @@ export const MainLayout = () => {
               isMenuOpen={mobileMenuOpen}
             />
           </div>
-          <main className='mx-auto w-full max-w-[100rem] min-w-0 flex-1 px-4 py-6 lg:px-8'>
+          <main className={isStudyPage ? 'w-full min-w-0 flex-1' : 'mx-auto w-full max-w-[100rem] min-w-0 flex-1 px-4 py-6 lg:px-8'}>
             <Outlet />
           </main>
         </div>

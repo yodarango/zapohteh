@@ -103,6 +103,84 @@ const SharedNoteCard = ({ note }) => {
   );
 };
 
+const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isOpen, onToggle }) => {
+  const [activeTab, setActiveTab] = useState("chapters");
+
+  return (
+    <div className={`flex flex-col gap-3 ${isOpen ? "w-full" : "w-12 shrink-0"}`}>
+      <button
+        type='button'
+        onClick={onToggle}
+        aria-label={isOpen ? "Collapse course panel" : "Expand course panel"}
+        aria-expanded={isOpen}
+        title={isOpen ? "Collapse course panel" : "Expand course panel"}
+        className={`flex h-10 items-center rounded-lg text-dr-text-muted hover:bg-dr-surface-light ${isOpen ? "justify-end px-3" : "justify-center"}`}
+      >
+        <ion-icon name={isOpen ? "chevron-forward-outline" : "chevron-back-outline"} className='text-xl' />
+      </button>
+      <div aria-label='Course panel sections' className={`flex gap-1 ${isOpen ? "flex-row" : "flex-col"}`}>
+        {[
+          { id: "chapters", label: "Chapters", icon: "list-outline" },
+          { id: "actions", label: "Actions", icon: "ellipsis-horizontal-outline" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type='button'
+            onClick={() => setActiveTab(tab.id)}
+            aria-label={tab.label}
+            aria-pressed={activeTab === tab.id}
+            title={tab.label}
+            className={`flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg text-xs font-semibold transition-colors ${isOpen ? "flex-1 px-0.5" : "w-full"} ${activeTab === tab.id ? "bg-dr-accent-light text-dr-accent" : "text-dr-text-muted hover:bg-dr-surface-light"}`}
+          >
+            <ion-icon name={tab.icon} className='shrink-0 text-base' />
+            {isOpen && <span>{tab.label}</span>}
+          </button>
+        ))}
+      </div>
+      {activeTab === "chapters" ? (
+        <ul className='flex flex-col gap-1'>
+          {chapters.map((chapter, index) => {
+            const isRead = readChapters.has(index);
+            return (
+              <li key={index}>
+                <button
+                  type='button'
+                  onClick={() => onChapterClick(index)}
+                  aria-label={`Chapter ${index + 1}: ${chapter.title}${isRead ? ", read" : ""}`}
+                  title={chapter.title}
+                  className={`flex w-full items-center gap-2 rounded-lg py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text ${isOpen ? "px-2" : "justify-center"}`}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs ${isRead ? "bg-dr-success font-bold text-white" : "border border-dr-border bg-dr-surface font-medium text-dr-text-muted"}`}>
+                    {index + 1}
+                  </span>
+                  {isOpen && <span className='min-w-0 break-words'>{chapter.title}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className='flex flex-col gap-2'>
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type='button'
+              onClick={action.onClick}
+              disabled={action.disabled}
+              aria-label={action.label}
+              title={action.label}
+              className={`flex min-h-10 items-center gap-2 rounded-xl border text-sm font-semibold transition-colors disabled:opacity-50 ${isOpen ? "w-full px-3" : "w-12 justify-center"} ${action.danger ? "border-dr-danger text-dr-danger hover:bg-dr-danger/10" : "border-dr-border bg-dr-surface text-dr-text hover:bg-dr-surface-light"}`}
+            >
+              <ion-icon name={action.icon} className='shrink-0 text-lg' />
+              {isOpen && <span>{action.label}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* *************************************************************************************************
  * Renders the assembled markdown research for a single topic, split into chapters so each chapter
  * heading can carry a "Create summary image" button. Clicking the button asks the backend to
@@ -144,7 +222,7 @@ export const LearnView = () => {
   const [role, setRole] = useState("owner");
   const [showCollaborateModal, setShowCollaborateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isChaptersOpen, setIsChaptersOpen] = useState(true);
+  const [isChaptersOpen, setIsChaptersOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -177,6 +255,10 @@ export const LearnView = () => {
   const access = isShared ? sharedData?.access || "anonymous" : role;
   const canOpenInApp = access === "owner" || access === "collaborator";
   const isAuthenticated = state.isAuthenticated;
+
+  useEffect(() => {
+    setIsChaptersOpen(false);
+  }, [routeTopic, token]);
 
   const renderMarkdownWithHighlights = useCallback((markdown, chapter = "") => {
     if (!markdown) return "";
@@ -1301,13 +1383,13 @@ export const LearnView = () => {
 
             {/* Reading view matching LearnView */}
             <main className='flex-1 overflow-y-auto lg:rounded-3xl lg:border lg:border-dr-border lg:bg-dr-surface lg:px-8 lg:py-6 lg:shadow-sm'>
-              <div className='flex h-full gap-8 overflow-x-hidden flex-col md:flex-row'>
+              <div className='flex h-full overflow-x-hidden flex-col md:flex-row'>
                 {/* Content column */}
                 <div
                   ref={sharedContentRef}
                   onMouseUp={handleTextSelection}
                   onClick={handleContentClick}
-                  className='min-w-0 flex-1 max-w-[800px] overflow-y-auto'
+                  className='min-w-0 flex-1 overflow-y-auto md:pr-6'
                 >
                   {coverImagePath && (
                     <Thumbnail
@@ -1376,72 +1458,19 @@ export const LearnView = () => {
                 </div>
 
                 {/* Right column: Actions & Chapters */}
-                <div className='w-full md:max-w-[320px] md:border-l md:border-dr-border md:pl-4 flex flex-col gap-4'>
-                  <div className='flex flex-col gap-2'>
-                    <Button secondary className='w-full' onClick={downloadPDF}>
-                      <ion-icon name='download-outline'></ion-icon>
-                      <span className='ml-2'>Download PDF</span>
-                    </Button>
-
-                    {access === "collaborator" && (
-                      <Button
-                        danger
-                        className='w-full'
-                        onClick={() => setShowAbandonModal(true)}
-                        isLoading={isLeaving}
-                      >
-                        <ion-icon name='exit-outline'></ion-icon>
-                        <span className='ml-2'>Abandon piece</span>
-                      </Button>
-                    )}
-                  </div>
-
-                  {chapters.length > 0 && (
-                    <div className='rounded-2xl border border-dr-border bg-dr-surface p-4'>
-                      <div className='mb-3 flex items-center justify-between'>
-                        <h3 className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-                          Chapters
-                        </h3>
-                        <button
-                          type='button'
-                          onClick={() => setIsChaptersOpen((v) => !v)}
-                          className='hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
-                          aria-label={
-                            isChaptersOpen
-                              ? "Collapse chapters"
-                              : "Expand chapters"
-                          }
-                        >
-                          <ion-icon
-                            name={
-                              isChaptersOpen
-                                ? "chevron-up-outline"
-                                : "chevron-down-outline"
-                            }
-                          />
-                        </button>
-                      </div>
-                      <ul
-                        className={`flex flex-col gap-1 ${!isChaptersOpen ? "md:hidden" : ""}`}
-                      >
-                        {chapters.map((chapter, chapterIndex) => (
-                          <li key={chapterIndex}>
-                            <button
-                              type='button'
-                              onClick={() => scrollToChapter(chapterIndex)}
-                              className='flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text'
-                            >
-                              <ion-icon
-                                name='ellipse-outline'
-                                className='shrink-0 text-dr-text-muted'
-                              />
-                              <span className='truncate'>{chapter.title}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                <div className={`shrink-0 border-l border-dr-border bg-dr-surface ${isChaptersOpen ? "w-full p-3 md:w-[min(30%,400px)]" : "w-14 p-1"}`}>
+                  <CourseNavigation
+                    key={token}
+                    chapters={chapters}
+                    readChapters={readChapters}
+                    onChapterClick={scrollToChapter}
+                    isOpen={isChaptersOpen}
+                    onToggle={() => setIsChaptersOpen((open) => !open)}
+                    actions={[
+                      { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
+                      ...(access === "collaborator" ? [{ label: "Abandon piece", icon: "exit-outline", onClick: () => setShowAbandonModal(true), danger: true, disabled: isLeaving }] : []),
+                    ]}
+                  />
                 </div>
               </div>
             </main>
@@ -1555,11 +1584,11 @@ export const LearnView = () => {
   }
 
   return (
-    <div className='flex h-full gap-8 overflow-x-hidden'>
+    <div className='flex h-full min-w-0 overflow-x-hidden'>
       <div
         onMouseUp={handleTextSelection}
         onClick={handleContentClick}
-        className='min-w-0 flex-1 max-w-[800px] h-[calc(100vh-120px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+        className='min-w-0 flex-1 h-[calc(100vh-72px)] overflow-auto px-4 py-6 lg:px-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
         <div className='relative mb-6'>
           {coverImagePath ? (
@@ -1850,7 +1879,7 @@ export const LearnView = () => {
       )}
 
       <div
-        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 bg-dr-surface p-4 flex flex-col" : "hidden"} md:flex md:flex-col md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-120px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}
+        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 flex flex-col p-4" : "hidden"} bg-dr-surface md:sticky md:top-0 md:z-auto md:flex md:h-[calc(100vh-72px)] md:shrink-0 md:self-start md:border-l md:border-dr-border ${isChaptersOpen ? "md:w-[min(30%,400px)] md:p-3" : "md:w-14 md:p-[3px]"} overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`}
       >
         {state.isLearnMenuOpen && (
           <div className='mb-4 flex items-center justify-between md:hidden'>
@@ -1868,89 +1897,18 @@ export const LearnView = () => {
             </button>
           </div>
         )}
-        <div className='order-3 md:order-4 mb-4'>
-          <div className='flex flex-col gap-2'>
-            <Button secondary className='w-full' onClick={downloadPDF}>
-              <ion-icon name='download-outline'></ion-icon>
-              <span className='ml-2'>Download PDF</span>
-            </Button>
-            {/* Narrate feature disabled for now — unused
-            <Button secondary className='w-full' onClick={narrate}>
-              <ion-icon name='musical-notes-outline'></ion-icon>
-              <span className='ml-2'>Narrate</span>
-            </Button>
-            */}
-            {role === "owner" && (
-              <Button
-                danger
-                className='w-full'
-                onClick={() => setShowDeleteModal(true)}
-              >
-                <ion-icon name='trash-outline'></ion-icon>
-                <span className='ml-2'>Delete course</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {chapters.length > 0 && (
-          <div className='order-4 md:order-1 py-4'>
-            <div className='mb-3 flex items-center justify-between'>
-              <h3 className='text-xs font-semibold uppercase tracking-wide text-dr-text-muted'>
-                Chapters
-              </h3>
-              <button
-                type='button'
-                onClick={() => setIsChaptersOpen((v) => !v)}
-                className='hidden md:flex h-6 w-6 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
-                aria-label={
-                  isChaptersOpen ? "Collapse chapters" : "Expand chapters"
-                }
-              >
-                <ion-icon
-                  name={
-                    isChaptersOpen
-                      ? "chevron-up-outline"
-                      : "chevron-down-outline"
-                  }
-                ></ion-icon>
-              </button>
-            </div>
-            <ul
-              className={`flex flex-col gap-1 ${!isChaptersOpen ? "md:hidden" : ""}`}
-            >
-              {chapters.map((chapter, chapterIndex) => {
-                const isRead = readChapters.has(chapterIndex);
-                return (
-                  <li key={chapterIndex}>
-                    <button
-                      type='button'
-                      onClick={() => scrollToChapter(chapterIndex)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
-                        isRead
-                          ? "text-dr-success"
-                          : "text-dr-text-muted hover:bg-dr-surface-light hover:text-dr-text"
-                      }`}
-                    >
-                      {isRead ? (
-                        <ion-icon
-                          name='checkmark-circle'
-                          className='shrink-0'
-                        />
-                      ) : (
-                        <ion-icon
-                          name='ellipse-outline'
-                          className='shrink-0 text-dr-text-muted'
-                        />
-                      )}
-                      <span>{chapter.title}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        <CourseNavigation
+          key={routeTopic}
+          chapters={chapters}
+          readChapters={readChapters}
+          onChapterClick={scrollToChapter}
+          isOpen={isChaptersOpen}
+          onToggle={() => setIsChaptersOpen((open) => !open)}
+          actions={[
+            { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
+            ...(role === "owner" ? [{ label: "Delete course", icon: "trash-outline", onClick: () => setShowDeleteModal(true), danger: true }] : []),
+          ]}
+        />
 
         <ConfirmationModal
           open={showDeleteModal}
@@ -1962,6 +1920,7 @@ export const LearnView = () => {
           cancelText='Cancel'
           confirmVariant='danger'
           isLoading={isDeleting}
+          zIndex={60}
         />
 
         <Modal
