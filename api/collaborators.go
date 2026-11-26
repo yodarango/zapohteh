@@ -331,9 +331,8 @@ func ListSharedCourses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpResponse.Data = courses
+	httpResponse.Data = filterLibrary(courses, r.URL.Query().Get("library"))
 	httpResponse.Success = true
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
-

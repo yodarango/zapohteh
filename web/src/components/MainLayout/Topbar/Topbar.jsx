@@ -4,6 +4,7 @@ import {
   API_GET_COURSES,
   ROUTE_LEARN,
   ROUTE_NOTIFICATIONS,
+  lessonPath,
 } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
@@ -69,7 +70,7 @@ export const Topbar = ({ onMenuToggle, isMenuOpen = false }) => {
     setQuery("");
     setResults([]);
     setShowResults(false);
-    navigate(`${ROUTE_LEARN}/${encodeURIComponent(course.id)}`);
+    navigate(lessonPath(course.id, course.source));
   };
 
   return (
@@ -107,7 +108,7 @@ export const Topbar = ({ onMenuToggle, isMenuOpen = false }) => {
           ></ion-icon>
           <input
             type='search'
-            placeholder='Search courses'
+            placeholder='Search Courses and Virtuals'
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className='w-full rounded-xl border border-dr-border bg-dr-surface-light py-2 pl-9 pr-3 text-sm text-dr-text outline-none transition-colors placeholder:text-dr-text-muted focus:border-dr-accent'

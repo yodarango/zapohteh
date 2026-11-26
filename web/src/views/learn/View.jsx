@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { memo, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { marked } from "marked";
 import {
   Button,
@@ -21,6 +21,7 @@ import {
   API_POST_COURSE_COVER_IMAGE,
   API_POST_CHAPTER_IMAGE,
   API_GET_READING_PROGRESS,
+  API_VIRTUAL_CHECKPOINT,
   API_POST_READING_PROGRESS,
   API_GET_SUBJECTS,
   API_GET_COURSE_SUBJECTS,
@@ -36,13 +37,17 @@ import {
   API_POST_COURSE_LEAVE,
   API_POST_NOTES,
   API_BASE,
-  ROUTE_LEARN,
-  ROUTE_COURSES,
+  ROUTE_VIRTUAL_READER,
+  ROUTE_HOME,
+  ROUTE_VIRTUALS,
+  isVirtualSource,
+  lessonPath,
   // Narrate feature disabled for now — unused
   // TANJREEN_API_URL,
   // TANJREEN_API_KEY,
 } from "@constants";
 import { splitChapters } from "./splitChapters";
+import { indexVirtualWords } from "./virtualWords";
 import { findHighlightMatches } from "./highlightMatches";
 import { ChatWidget } from "./ChatWidget";
 import { CollaborateModal } from "./CollaborateModal";
@@ -103,24 +108,33 @@ const SharedNoteCard = ({ note }) => {
   );
 };
 
-const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isOpen, onToggle }) => {
+// Keep the reading DOM in place when unrelated state (such as a toast) changes.
+const ReadingMarkdown = memo(function ReadingMarkdown({ html }) {
+  return <div className='research-content' dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+const ReadingHeading = memo(function ReadingHeading({ title }) {
+  return <h4 data-reading-heading className='mb-2 text-xl font-bold text-blue-500/80'>{title}</h4>;
+});
+
+const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isOpen, onToggle, virtual = false }) => {
   const [activeTab, setActiveTab] = useState("chapters");
 
   return (
-    <div className={`flex flex-col gap-3 ${isOpen ? "w-full" : "w-12 shrink-0"}`}>
+    <div className={`flex min-h-0 flex-1 flex-col gap-3 ${isOpen ? "w-full" : "w-12 shrink-0"}`}>
       <button
         type='button'
         onClick={onToggle}
         aria-label={isOpen ? "Collapse course panel" : "Expand course panel"}
         aria-expanded={isOpen}
         title={isOpen ? "Collapse course panel" : "Expand course panel"}
-        className={`flex h-10 items-center rounded-lg text-dr-text-muted hover:bg-dr-surface-light ${isOpen ? "justify-end px-3" : "justify-center"}`}
+        className={`flex h-10 shrink-0 items-center rounded-lg text-dr-text-muted hover:bg-dr-surface-light ${isOpen ? "justify-end px-3" : "justify-center"}`}
       >
         <ion-icon name={isOpen ? "chevron-forward-outline" : "chevron-back-outline"} className='text-xl' />
       </button>
-      <div aria-label='Course panel sections' className={`flex gap-1 ${isOpen ? "flex-row" : "flex-col"}`}>
+      <div aria-label='Course panel sections' className={`flex shrink-0 gap-1 ${isOpen ? "flex-row" : "flex-col"}`}>
         {[
-          { id: "chapters", label: "Chapters", icon: "list-outline" },
+          { id: "chapters", label: virtual ? "Sections" : "Chapters", icon: "list-outline" },
           { id: "actions", label: "Actions", icon: "ellipsis-horizontal-outline" },
         ].map((tab) => (
           <button
@@ -138,15 +152,15 @@ const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isO
         ))}
       </div>
       {activeTab === "chapters" ? (
-        <ul className='flex flex-col gap-1'>
+        <ul className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
           {chapters.map((chapter, index) => {
-            const isRead = readChapters.has(index);
+            const isRead = !virtual && readChapters.has(index);
             return (
               <li key={index}>
                 <button
                   type='button'
                   onClick={() => onChapterClick(index)}
-                  aria-label={`Chapter ${index + 1}: ${chapter.title}${isRead ? ", read" : ""}`}
+                  aria-label={`${virtual ? "Section" : "Chapter"} ${index + 1}: ${chapter.title}${isRead ? ", read" : ""}`}
                   title={chapter.title}
                   className={`flex w-full items-center gap-2 rounded-lg py-1.5 text-left text-sm text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text ${isOpen ? "px-2" : "justify-center"}`}
                 >
@@ -190,6 +204,7 @@ const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isO
 export const LearnView = () => {
   const { topic: routeTopic, token } = useParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { showToast, state, closeLearnMenu } = useAppContext();
 
   const isShared = Boolean(token);
@@ -206,6 +221,13 @@ export const LearnView = () => {
   // imported lessons use the titles to split chapters (see splitChapters)
   const [chapterTitles, setChapterTitles] = useState(null);
   const [isImportedLesson, setIsImportedLesson] = useState(false);
+  const [source, setSource] = useState("");
+  const [revision, setRevision] = useState("");
+  const [checkpoint, setCheckpoint] = useState(null);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState(null);
+  const [savingCheckpoint, setSavingCheckpoint] = useState(false);
+  const readingRef = useRef(null);
+  const checkpointRequest = useRef(null);
   const [loading, setLoading] = useState(true);
   // titles of chapters whose images are currently being generated
   const [generating, setGenerating] = useState(new Set());
@@ -255,6 +277,19 @@ export const LearnView = () => {
   const access = isShared ? sharedData?.access || "anonymous" : role;
   const canOpenInApp = access === "owner" || access === "collaborator";
   const isAuthenticated = state.isAuthenticated;
+  const isVirtual = isVirtualSource(source) || (!source && isImportedLesson);
+
+  useEffect(() => {
+    if (!loading && !isShared && routeTopic && isVirtualSource(source) && !pathname.startsWith(`${ROUTE_VIRTUAL_READER}/`)) {
+      navigate(lessonPath(routeTopic, source), { replace: true });
+    }
+  }, [loading, isShared, routeTopic, source, pathname, navigate]);
+  const canCheckpoint = isVirtual && !isShared && !!revision;
+  const currentCheckpoint = canCheckpoint && checkpoint?.revision === revision ? checkpoint : null;
+  const checkpointPercent = currentCheckpoint
+    ? Math.floor((currentCheckpoint.wordIndex + 1) * 100 / currentCheckpoint.wordCount)
+    : 0;
+  const checkpointUrl = `${API_VIRTUAL_CHECKPOINT}?topic=${encodeURIComponent(topic)}`;
 
   useEffect(() => {
     setIsChaptersOpen(false);
@@ -417,6 +452,94 @@ export const LearnView = () => {
   );
 
   useEffect(() => {
+    setCheckpoint(null);
+    setSelectedCheckpoint(null);
+    checkpointRequest.current = null;
+    if (!canCheckpoint) return;
+    const controller = new AbortController();
+    fetch(checkpointUrl, { signal: controller.signal, headers: authHeaders() })
+      .then((response) => response.json())
+      .then((result) => {
+        if (controller.signal.aborted || checkpointRequest.current) return;
+        if (!result.success) throw new Error(result.error || "Could not load reading checkpoint");
+        setCheckpoint(result.data);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) showToast({ type: "danger", message: error.message });
+      });
+    return () => {
+      controller.abort();
+      checkpointRequest.current?.abort();
+    };
+  }, [canCheckpoint, checkpointUrl, revision, showToast]);
+
+  const getCheckpointRange = useCallback((saved) => {
+    if (!readingRef.current || !saved) return null;
+    const words = indexVirtualWords(readingRef.current);
+    return words.count === saved.wordCount ? words.rangeFor(saved.wordIndex) : null;
+  }, []);
+
+  useEffect(() => {
+    if (loading || !currentCheckpoint) return;
+    const range = getCheckpointRange(currentCheckpoint);
+    if (!range) return;
+    const marker = document.createElement("ion-icon");
+    marker.setAttribute("name", "bookmark");
+    marker.setAttribute("role", "img");
+    marker.setAttribute("aria-label", "Reading checkpoint");
+    marker.setAttribute("title", "Reading checkpoint");
+    marker.setAttribute("data-virtual-bookmark", "");
+    marker.className = "virtual-bookmark";
+
+    const end = range.endContainer;
+    // Only split when the word ends inside a node; keep the original node for React.
+    const tail = range.endOffset < end.length ? end.splitText(range.endOffset) : null;
+    end.after(marker);
+    return () => {
+      marker.remove();
+      if (tail && end.nextSibling === tail) {
+        end.appendData(tail.data);
+        tail.remove();
+      }
+    };
+  }, [loading, currentCheckpoint, getCheckpointRange, renderedIntro, renderedChapters, bibliography]);
+
+  const resumeCheckpoint = () => {
+    const range = getCheckpointRange(currentCheckpoint);
+    const reader = readingRef.current;
+    if (!reader || !range) {
+      showToast({ type: "danger", message: "This checkpoint no longer matches the document. Set a new checkpoint to continue." });
+      return;
+    }
+    reader.scrollTop += range.getBoundingClientRect().top - reader.getBoundingClientRect().top - reader.clientHeight / 3;
+  };
+
+  const saveCheckpoint = async () => {
+    if (!selectedCheckpoint || savingCheckpoint) return;
+    const controller = new AbortController();
+    checkpointRequest.current = controller;
+    setSavingCheckpoint(true);
+    try {
+      const response = await fetch(checkpointUrl, {
+        method: "PUT",
+        signal: controller.signal,
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(selectedCheckpoint),
+      });
+      const result = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok || !result.success) throw new Error(result.error || "Could not save reading checkpoint");
+      setCheckpoint(result.data);
+      cancelPendingHighlight();
+      showToast({ type: "success", message: "Reading checkpoint saved" });
+    } catch (error) {
+      if (!controller.signal.aborted) showToast({ type: "danger", message: error.message });
+    } finally {
+      setSavingCheckpoint(false);
+    }
+  };
+
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "x" || e.key === "X") xKeyHeld.current = true;
     };
@@ -466,6 +589,7 @@ export const LearnView = () => {
       setCourseLanguage(d.language || "");
       setChapterTitles(d.chapters || null);
       setIsImportedLesson(!!d.imported);
+      setSource(d.source || "");
       setRole(
         d.access === "owner"
           ? "owner"
@@ -498,6 +622,11 @@ export const LearnView = () => {
     const controller = new AbortController();
     (async () => {
       setLoading(true);
+      setRevision("");
+      setSource("");
+      setIsImportedLesson(false);
+      setReadChapters(new Set());
+      setHighlights([]);
       try {
         const [topicRes, progressRes, subjectsRes, courseSubjectsRes] =
           await Promise.all([
@@ -537,6 +666,8 @@ export const LearnView = () => {
           setRole(topicResult.data?.role || "owner");
           setChapterTitles(topicResult.data?.chapters || null);
           setIsImportedLesson(!!topicResult.data?.imported);
+          setSource(topicResult.data?.source || "");
+          setRevision(topicResult.data?.revision || "");
         }
 
         if (progressResult.data && Array.isArray(progressResult.data)) {
@@ -561,9 +692,9 @@ export const LearnView = () => {
           const [highlightsRes, userHighlightsRes] = await Promise.all([
             fetch(
               `${API_GET_COURSE_HIGHLIGHTS}?topic=${encodeURIComponent(routeTopic)}`,
-              { headers: authHeaders() },
+              { signal: controller.signal, headers: authHeaders() },
             ),
-            fetch(API_GET_HIGHLIGHTS, { headers: authHeaders() }),
+            fetch(API_GET_HIGHLIGHTS, { signal: controller.signal, headers: authHeaders() }),
           ]);
           const highlightsResult = await highlightsRes.json();
           const userHighlightsResult = await userHighlightsRes.json();
@@ -586,7 +717,7 @@ export const LearnView = () => {
             message: err.message || "Something went wrong",
           });
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
     return () => controller.abort();
@@ -813,6 +944,7 @@ export const LearnView = () => {
   };
 
   const cancelPendingHighlight = () => {
+    setSelectedCheckpoint(null);
     setShowHighlightPopup(false);
     setEditingHighlight(null);
     setPendingHighlight(null);
@@ -854,6 +986,7 @@ export const LearnView = () => {
   });
 
   const toggleRead = async (chapterIndex) => {
+    if (isVirtual) return;
     const nextRead = !readChapters.has(chapterIndex);
     setReadChapters((prev) => {
       const next = new Set(prev);
@@ -1074,7 +1207,7 @@ export const LearnView = () => {
         throw new Error(result.error || "Failed to delete course");
       }
       showToast({ type: "success", message: "Course deleted" });
-      navigate(ROUTE_COURSES);
+      navigate(isVirtual ? ROUTE_VIRTUALS : ROUTE_HOME);
     } catch (err) {
       showToast({
         type: "danger",
@@ -1151,7 +1284,7 @@ export const LearnView = () => {
       // Navigate to the new course URL if the title changed.
       const newId = result.data?.id;
       if (newId && newId !== topic) {
-        navigate(`${ROUTE_LEARN}/${encodeURIComponent(newId)}`, {
+        navigate(lessonPath(newId, source), {
           replace: true,
         });
       } else {
@@ -1235,7 +1368,14 @@ export const LearnView = () => {
     const text = selection.toString().trim();
     if (!text) return;
 
-    if (!isSelectionInLesson(selection)) return;
+    let word = null;
+    if (canCheckpoint && readingRef.current) {
+      const words = indexVirtualWords(readingRef.current);
+      const wordIndex = words.selectedWord(selection);
+      if (wordIndex >= 0) word = { revision, wordIndex, wordCount: words.count };
+    }
+    if (!word && !isSelectionInLesson(selection)) return;
+    setSelectedCheckpoint(word);
 
     const chapter = getChapterFromSelection(selection);
 
@@ -1263,6 +1403,7 @@ export const LearnView = () => {
     }
 
     if (editBtn) {
+      setSelectedCheckpoint(null);
       const text = editBtn.getAttribute("data-highlight-text") || "";
       const highlightId = editBtn.getAttribute("data-highlight-id");
       const chapter = editBtn.getAttribute("data-highlight-chapter") || "";
@@ -1425,7 +1566,7 @@ export const LearnView = () => {
                           __html: renderedChapters[chapterIndex],
                         }}
                       />
-                      <div className='mb-3 flex items-start justify-between gap-4'>
+                      {!isVirtual && <div className='mb-3 flex items-start justify-between gap-4'>
                         <div className='flex shrink-0 items-center gap-2'>
                           <button
                             type='button'
@@ -1446,7 +1587,7 @@ export const LearnView = () => {
                             <span>Mark read</span>
                           </button>
                         </div>
-                      </div>
+                      </div>}
                     </section>
                   ))}
                   {bibliography && (
@@ -1458,9 +1599,10 @@ export const LearnView = () => {
                 </div>
 
                 {/* Right column: Actions & Chapters */}
-                <div className={`shrink-0 border-l border-dr-border bg-dr-surface ${isChaptersOpen ? "w-full p-3 md:w-[min(30%,400px)]" : "w-14 p-1"}`}>
+                <div className={`flex h-[min(70vh,600px)] shrink-0 flex-col overflow-hidden border-l border-dr-border bg-dr-surface md:sticky md:top-0 md:h-[calc(100vh-6rem)] md:self-start ${isChaptersOpen ? "w-full p-3 md:w-[min(30%,400px)]" : "w-14 p-1"}`}>
                   <CourseNavigation
                     key={token}
+                    virtual={isVirtual}
                     chapters={chapters}
                     readChapters={readChapters}
                     onChapterClick={scrollToChapter}
@@ -1468,6 +1610,7 @@ export const LearnView = () => {
                     onToggle={() => setIsChaptersOpen((open) => !open)}
                     actions={[
                       { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
+                      ...(isVirtual && canOpenInApp ? [{ label: "Open Virtual reader", icon: "bookmark-outline", onClick: () => navigate(lessonPath(topic, source)) }] : []),
                       ...(access === "collaborator" ? [{ label: "Abandon piece", icon: "exit-outline", onClick: () => setShowAbandonModal(true), danger: true, disabled: isLeaving }] : []),
                     ]}
                   />
@@ -1586,7 +1729,11 @@ export const LearnView = () => {
   return (
     <div className='flex h-full min-w-0 overflow-x-hidden'>
       <div
+        ref={readingRef}
         onMouseUp={handleTextSelection}
+        onKeyUp={(event) => {
+          if (event.shiftKey && event.key.startsWith("Arrow")) handleTextSelection(event);
+        }}
         onClick={handleContentClick}
         className='min-w-0 flex-1 h-[calc(100vh-72px)] overflow-auto px-4 py-6 lg:px-8 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
@@ -1675,7 +1822,22 @@ export const LearnView = () => {
           )}
         </div>
 
-        {chapters.length > 0 && (
+        {isVirtual && (
+          <div className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
+            <div className='flex flex-wrap items-center justify-between gap-2 text-sm'>
+              <span className='font-semibold'>Reading checkpoint · {checkpointPercent}%</span>
+              {currentCheckpoint && <Button type='button' secondary onClick={resumeCheckpoint}>Resume reading</Button>}
+            </div>
+            {checkpoint && !currentCheckpoint ? (
+              <p className='mt-2 text-sm text-dr-text-muted'>This document changed. Select a word to set a new checkpoint.</p>
+            ) : !currentCheckpoint && (
+              <p className='mt-2 text-sm text-dr-text-muted'>Select a word in the document to mark where you left off.</p>
+            )}
+            <progress className='mt-3 h-2 w-full accent-dr-accent' aria-label='Virtual reading progress' value={checkpointPercent} max={100} />
+          </div>
+        )}
+
+        {!isVirtual && chapters.length > 0 && (
           <div className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
             <div className='mb-2 flex items-center justify-between text-sm'>
               <span className='font-semibold text-dr-text'>
@@ -1695,12 +1857,7 @@ export const LearnView = () => {
         )}
 
         {intro && (
-          <div
-            className='research-content'
-            dangerouslySetInnerHTML={{
-              __html: renderedIntro,
-            }}
-          />
+          <ReadingMarkdown html={renderedIntro} />
         )}
 
         {chapters.map((chapter, chapterIndex) => {
@@ -1713,18 +1870,11 @@ export const LearnView = () => {
               ref={(element) => { chapterRefs.current[chapterIndex] = element; }}
               className='mt-8 scroll-mt-6'
             >
-              <h4 className='font-bold tet-xl mb-2 text-blue-500/80'>
-                {chapter.title}
-              </h4>
+              <ReadingHeading title={chapter.title} />
 
-              <div
-                className='research-content'
-                dangerouslySetInnerHTML={{
-                  __html: renderedChapters[chapterIndex],
-                }}
-              />
+              <ReadingMarkdown html={renderedChapters[chapterIndex]} />
               {/* chapter heading with its summary image action */}
-              <div className='mb-3 flex items-start justify-between gap-4'>
+              {!isVirtual && <div className='mb-3 flex items-start justify-between gap-4'>
                 <div className='flex shrink-0 items-center gap-2'>
                   <button
                     type='button'
@@ -1762,14 +1912,14 @@ export const LearnView = () => {
                     </Button>
                   )}
                 </div>
-              </div>
+              </div>}
             </section>
           );
         })}
         {bibliography && (
           <section className='mt-8'>
-            <h4 className='mb-2 text-xl font-bold text-blue-500/80'>Bibliography</h4>
-            <div className='research-content' dangerouslySetInnerHTML={{ __html: marked.parse(bibliography) }} />
+            <ReadingHeading title='Bibliography' />
+            <ReadingMarkdown html={marked.parse(bibliography)} />
           </section>
         )}
       </div>
@@ -1856,7 +2006,13 @@ export const LearnView = () => {
                   />
                 </>
               )}
-              <div className='flex justify-end gap-2'>
+              <div className='flex flex-wrap justify-end gap-2'>
+                {selectedCheckpoint && (
+                  <Button type='button' secondary disabled={savingCheckpoint} onClick={saveCheckpoint}>
+                    <ion-icon name='bookmark-outline' className='mr-2' />
+                    Set reading checkpoint
+                  </Button>
+                )}
                 <Button
                   secondary
                   className='px-3 py-1.5 text-xs'
@@ -1879,10 +2035,10 @@ export const LearnView = () => {
       )}
 
       <div
-        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 flex flex-col p-4" : "hidden"} bg-dr-surface md:sticky md:top-0 md:z-auto md:flex md:h-[calc(100vh-72px)] md:shrink-0 md:self-start md:border-l md:border-dr-border ${isChaptersOpen ? "md:w-[min(30%,400px)] md:p-3" : "md:w-14 md:p-[3px]"} overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`}
+        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 flex flex-col p-4" : "hidden"} overflow-hidden bg-dr-surface md:sticky md:top-0 md:z-auto md:flex md:h-[calc(100vh-72px)] md:shrink-0 md:self-start md:border-l md:border-dr-border ${isChaptersOpen ? "md:w-[min(30%,400px)] md:p-3" : "md:w-14 md:p-[3px]"}`}
       >
         {state.isLearnMenuOpen && (
-          <div className='mb-4 flex items-center justify-between md:hidden'>
+          <div className='mb-4 flex shrink-0 items-center justify-between md:hidden'>
             <h3 className='text-sm font-semibold uppercase tracking-wide text-dr-text-muted'>
               Menu
             </h3>
@@ -1899,6 +2055,7 @@ export const LearnView = () => {
         )}
         <CourseNavigation
           key={routeTopic}
+          virtual={isVirtual}
           chapters={chapters}
           readChapters={readChapters}
           onChapterClick={scrollToChapter}
@@ -1906,7 +2063,8 @@ export const LearnView = () => {
           onToggle={() => setIsChaptersOpen((open) => !open)}
           actions={[
             { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
-            ...(role === "owner" ? [{ label: "Delete course", icon: "trash-outline", onClick: () => setShowDeleteModal(true), danger: true }] : []),
+            ...(currentCheckpoint ? [{ label: "Resume reading", icon: "bookmark-outline", onClick: () => { closeLearnMenu(); resumeCheckpoint(); } }] : []),
+            ...(role === "owner" ? [{ label: isVirtual ? "Delete Virtual" : "Delete course", icon: "trash-outline", onClick: () => setShowDeleteModal(true), danger: true }] : []),
           ]}
         />
 
@@ -1914,7 +2072,7 @@ export const LearnView = () => {
           open={showDeleteModal}
           onClose={() => setShowDeleteModal(false)}
           onConfirm={handleDeleteCourse}
-          title='Delete course'
+          title={isVirtual ? "Delete Virtual" : "Delete course"}
           message={`Are you sure you want to delete "${topic}"? This action cannot be undone.`}
           confirmText='Delete'
           cancelText='Cancel'

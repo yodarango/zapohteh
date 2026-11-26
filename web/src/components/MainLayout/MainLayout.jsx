@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useMatch } from "react-router-dom";
-import { ROUTE_LEARN } from "@constants";
+import { ROUTE_LEARN, ROUTE_VIRTUAL_READER } from "@constants";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { Topbar } from "./Topbar/Topbar";
 
@@ -68,7 +68,9 @@ export const MainLayout = () => {
   const [mobileNotesWidth, setMobileNotesWidth] = useState(DEFAULT_NOTES_WIDTH);
   const [desktopNavWidth, setDesktopNavWidth] = useState(MIN_SIDEBAR_WIDTH);
   const [mobileNavWidth, setMobileNavWidth] = useState(MIN_SIDEBAR_WIDTH);
-  const isStudyPage = !!useMatch(`${ROUTE_LEARN}/:topic`);
+  const studyMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+  const virtualMatch = useMatch(`${ROUTE_VIRTUAL_READER}/:topic`);
+  const isStudyPage = !!(studyMatch || virtualMatch);
 
   useEffect(() => {
     if (!isStudyPage) {

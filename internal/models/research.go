@@ -122,17 +122,18 @@ func (r *Research) contentInstructions() string {
 // Course represents a single researched topic stored in the data directory. ID is
 // the raw folder name (used in the learn route) and Name is its Title Case version.
 type Course struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	CoverImagePath string     `json:"coverImagePath"`
-	Language       string     `json:"language"`
-	Source         string     `json:"source"`
-	TotalChapters  int        `json:"totalChapters"`
-	ReadChapters   int        `json:"readChapters"`
-	Subjects       []Subject  `json:"subjects"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	LastReadAt     *time.Time `json:"lastReadAt"`
-	CompletedAt    *time.Time `json:"completedAt"`
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	CoverImagePath    string     `json:"coverImagePath"`
+	Language          string     `json:"language"`
+	Source            string     `json:"source"`
+	TotalChapters     int        `json:"totalChapters"`
+	ReadChapters      int        `json:"readChapters"`
+	CheckpointPercent int        `json:"checkpointPercent"`
+	Subjects          []Subject  `json:"subjects"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	LastReadAt        *time.Time `json:"lastReadAt"`
+	CompletedAt       *time.Time `json:"completedAt"`
 	// Role is set only by ListSharedCourses: "owner" for the caller's own shared
 	// courses, "collaborator" for courses shared with the caller.
 	Role string `json:"role,omitempty"`
@@ -179,9 +180,13 @@ func ListCourses(userId uint) ([]Course, error) {
 	completedAts := make(map[string]*time.Time)
 	languages := make(map[string]string)
 	sources := make(map[string]string)
+	checkpoints := make(map[string]VirtualCheckpoint)
 	if ModelsRepo != nil && ModelsRepo.DB != nil && ModelsRepo.DB.Conn != nil {
 		rows, err := ModelsRepo.DB.Conn.Query(
-			"SELECT title, cover_image_path, created_at, completed_at, language, source FROM courses WHERE user_id = ?",
+			`SELECT c.title, c.cover_image_path, c.created_at, c.completed_at, c.language, c.source,
+			 COALESCE(v.revision, ''), COALESCE(v.word_index, 0), COALESCE(v.word_count, 0)
+			 FROM courses c LEFT JOIN virtual_checkpoints v ON v.course_id = c.id AND v.user_id = c.user_id
+			 WHERE c.user_id = ?`,
 			userId,
 		)
 		if err == nil {
@@ -193,8 +198,12 @@ func ListCourses(userId uint) ([]Course, error) {
 				var completedAt sql.NullTime
 				var language sql.NullString
 				var source sql.NullString
-				if err := rows.Scan(&title, &path, &createdAt, &completedAt, &language, &source); err == nil {
+				var checkpoint VirtualCheckpoint
+				if err := rows.Scan(&title, &path, &createdAt, &completedAt, &language, &source, &checkpoint.Revision, &checkpoint.WordIndex, &checkpoint.WordCount); err == nil {
 					key := utils.SanitizeFilename(title)
+					if checkpoint.Revision != "" {
+						checkpoints[key] = checkpoint
+					}
 					if path.Valid && path.String != "" {
 						coverPaths[key] = path.String
 					}
@@ -276,18 +285,23 @@ func ListCourses(userId uint) ([]Course, error) {
 		if source == "" {
 			source = CourseSourceAI
 		}
+		checkpointPercent := 0
+		if IsVirtualSource(source) {
+			checkpointPercent = research.checkpointPercent(checkpoints[name])
+		}
 		courses = append(courses, Course{
-			ID:             name,
-			Name:           utils.ToTitleCase(name),
-			CoverImagePath: coverPaths[name],
-			Language:       languages[name],
-			Source:         source,
-			TotalChapters:  total,
-			ReadChapters:   readCount,
-			Subjects:       subjectMap[name],
-			CreatedAt:      createdAts[name],
-			LastReadAt:     lastReadAts[name],
-			CompletedAt:    completedAt,
+			ID:                name,
+			Name:              utils.ToTitleCase(name),
+			CoverImagePath:    coverPaths[name],
+			Language:          languages[name],
+			Source:            source,
+			TotalChapters:     total,
+			ReadChapters:      readCount,
+			CheckpointPercent: checkpointPercent,
+			Subjects:          subjectMap[name],
+			CreatedAt:         createdAts[name],
+			LastReadAt:        lastReadAts[name],
+			CompletedAt:       completedAt,
 		})
 	}
 
@@ -1561,9 +1575,16 @@ func SaveReadingProgress(userId uint, courseTitle string, chapterIndex int, read
 	if ModelsRepo == nil || ModelsRepo.DB == nil || ModelsRepo.DB.Conn == nil {
 		return fmt.Errorf("database is not available")
 	}
-	ownerId, _, role, err := ResolveCourseAccess(userId, courseTitle)
+	ownerId, courseID, role, err := ResolveCourseAccess(userId, courseTitle)
 	if err != nil {
 		return err
+	}
+	source, err := CourseSourceByID(courseID)
+	if err != nil {
+		return err
+	}
+	if IsVirtualSource(source) {
+		return fmt.Errorf("Virtuals use word checkpoints instead of chapter completion")
 	}
 	research := Research{UserID: ownerId, Title: courseTitle}
 	total := research.countVisibleChapters()

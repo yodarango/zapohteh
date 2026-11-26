@@ -33,8 +33,8 @@ export const useStoredFilters = (storageKey) => {
     });
   }, [storageKey, query, selectedSubjects, selectedStatus, selectedYears, selectedMonths]);
 
-  const hasFilters = query || debouncedQuery || selectedSubjects.size ||
-    selectedStatus || selectedYears.size || selectedMonths.size;
+  const hasFilters = Boolean(query || debouncedQuery || selectedSubjects.size ||
+    selectedStatus || selectedYears.size || selectedMonths.size);
 
   const clearFilters = () => {
     setQuery("");

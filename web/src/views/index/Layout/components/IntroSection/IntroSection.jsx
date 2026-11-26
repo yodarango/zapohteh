@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input, Loading, Switch, TextArea } from "@ds";
 import {
   API_COURSE_JOBS,
   API_GET_SUBJECTS,
-  ROUTE_LEARN,
+  lessonPath,
+  isVirtualSource,
 } from "@constants";
 import { useGet } from "@utils";
 import { readStoredJSON, removeStoredItem, writeStoredJSON } from "@utils/localStorage";
@@ -116,7 +117,7 @@ function CourseJobs({ jobs, error, navigate }) {
               {job.error && <p className='mt-2 text-sm text-dr-danger'>{job.error}</p>}
               {job.notificationStatus === "failed" && <p className='mt-2 text-xs text-dr-danger'>The notification email could not be sent.</p>}
               {job.status === "succeeded" && (
-                <Button success className='mt-3' onClick={() => navigate(`${ROUTE_LEARN}/${encodeURIComponent(job.courseTitle)}`)}>Read course</Button>
+                <Button success className='mt-3' onClick={() => navigate(lessonPath(job.courseTitle, job.source))}>{isVirtualSource(job.source) ? "Read Virtual" : "Read course"}</Button>
               )}
             </div>
           );
@@ -129,11 +130,12 @@ function CourseJobs({ jobs, error, navigate }) {
 
 export const IntroSection = () => {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const virtuals = params.get("type") === "virtuals";
   const { showToast } = useAppContext();
   const [saved] = useState(() => readStoredJSON(FORM_STATE_KEY) || {});
-  const [mode, setMode] = useState(() =>
-    MODES.some((option) => option.value === saved.mode) ? saved.mode : "ai",
-  );
+  const [importMode, setImportMode] = useState(() => saved.mode === "url" ? "url" : "pdf");
+  const mode = virtuals ? importMode : "ai";
   const [titles, setTitles] = useState(() => {
     if (saved.titles && typeof saved.titles === "object") {
       return {
@@ -142,7 +144,7 @@ export const IntroSection = () => {
         url: typeof saved.titles.url === "string" ? saved.titles.url : "",
       };
     }
-    return { ai: "", pdf: "", url: "", [mode]: typeof saved.title === "string" ? saved.title : "" };
+    return { ai: "", pdf: "", url: "", [saved.mode || "ai"]: typeof saved.title === "string" ? saved.title : "" };
   });
   const [input, setInput] = useState(() => typeof saved.input === "string" ? saved.input : "");
   const [level, setLevel] = useState(() => RESEARCH_LEVELS.some((option) => option.value === saved.level) ? saved.level : "medium");
@@ -173,7 +175,7 @@ export const IntroSection = () => {
       writingStyle,
       searchWeb,
       notifyEmail,
-      mode,
+      mode: importMode,
       url,
       selectedSubjects: Array.from(selectedSubjects),
     };
@@ -186,7 +188,7 @@ export const IntroSection = () => {
     writingStyle,
     searchWeb,
     notifyEmail,
-    mode,
+    importMode,
     url,
     selectedSubjects,
   ]);
@@ -318,23 +320,32 @@ export const IntroSection = () => {
   return (
     <section>
       <h1 className='mb-1 text-2xl font-bold text-dr-text'>
-        what brain update are we installing today? 🧠
+        {virtuals ? "Import a Virtual" : "Create a course"}
       </h1>
       <p className='mb-6 text-sm text-dr-text-muted'>
-        You can make it as broad as the gates of Hell or as narrow as the eye of
-        a niddle. Just describe it.
+        {virtuals ? "Upload a PDF or import a web article." : "Describe the topic you want to learn about."}
       </p>
 
+      <div role='group' aria-label='Content type' className='mb-4 flex flex-wrap items-center gap-2'>
+        <span className='text-sm font-medium text-dr-text'>Content type:</span>
+        {["courses", "virtuals"].map((type) => (
+          <button key={type} type='button' aria-pressed={(type === "virtuals") === virtuals} disabled={loading}
+            onClick={() => setParams({ type })}
+            className={`rounded-xl border px-4 py-2 text-sm font-medium ${(type === "virtuals") === virtuals ? "border-dr-accent bg-dr-accent-light text-dr-accent" : "border-dr-border text-dr-text-muted"}`}>
+            {type === "virtuals" ? "Virtuals" : "Courses"}
+          </button>
+        ))}
+      </div>
       <div className='lg:rounded-2xl lg:border lg:border-dr-border lg:bg-dr-surface-light lg:p-6'>
         <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
           <fieldset disabled={loading} className='flex min-w-0 flex-col gap-3'>
             {/* Lesson source selector */}
-            <div className='flex flex-col gap-2'>
+            {virtuals && <div className='flex flex-col gap-2'>
               <span className='text-sm font-medium text-dr-text'>
-                Lesson Source
+                Import source
               </span>
               <div className='flex flex-wrap gap-3'>
-                {MODES.map((option) => (
+                {MODES.filter((option) => option.value !== "ai").map((option) => (
                   <label
                     key={option.value}
                     className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-2 text-center text-sm font-medium transition-colors ${
@@ -348,7 +359,7 @@ export const IntroSection = () => {
                       name='lesson-mode'
                       value={option.value}
                       checked={mode === option.value}
-                      onChange={() => setMode(option.value)}
+                      onChange={() => setImportMode(option.value)}
                       className='sr-only'
                     />
                     <ion-icon name={option.icon} aria-hidden='true' />
@@ -356,7 +367,7 @@ export const IntroSection = () => {
                   </label>
                 ))}
               </div>
-            </div>
+            </div>}
 
             {/* Title only names the storage folder, nothing else; imports fall
                 back to the file name or article title when left empty */}

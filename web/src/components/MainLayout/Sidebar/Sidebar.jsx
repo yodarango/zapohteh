@@ -3,6 +3,8 @@ import {
   ROUTE_CREATE,
   ROUTE_HOME,
   ROUTE_LEARN,
+  ROUTE_VIRTUALS,
+  ROUTE_VIRTUAL_READER,
   ROUTE_SUBJECTS,
   ROUTE_HIGHLIGHTS,
   ROUTE_USERS_ME,
@@ -15,6 +17,7 @@ import zapohtehLogo from "../../../../public/logo.webp";
 // Primary navigation, grouped the same way as the reference dashboard.
 const GENERAL = [
   { label: "Courses", icon: "book-outline", to: ROUTE_HOME },
+  { label: "Virtuals", icon: "library-outline", to: ROUTE_VIRTUALS },
   { label: "Create", icon: "add-circle-outline", to: ROUTE_CREATE },
   { label: "Organization", icon: "albums-outline", to: ROUTE_SUBJECTS },
   { label: "Highlights", icon: "color-palette-outline", to: ROUTE_HIGHLIGHTS },
@@ -63,7 +66,10 @@ const SectionLabel = ({ children }) => (
 
 export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, notesOpen = false, onNotesToggle, onExpandToggle }) => {
   const navigate = useNavigate();
-  const studyMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+  const courseMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+  const virtualMatch = useMatch(`${ROUTE_VIRTUAL_READER}/:topic`);
+  const studyMatch = courseMatch || virtualMatch;
+  const backLabel = virtualMatch ? "Back to Virtuals" : "Back to courses";
   const { state, logout } = useAppContext();
   const user = state?.user || {};
   const name =
@@ -98,14 +104,14 @@ export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, 
       <nav className='min-h-0 flex-1 overflow-y-auto px-3'>
         {studyMatch && (
           <Link
-            to={ROUTE_HOME}
+            to={virtualMatch ? ROUTE_VIRTUALS : ROUTE_HOME}
             onClick={onClose}
-            aria-label='Back to courses'
-            title='Back to courses'
+            aria-label={backLabel}
+            title={backLabel}
             className={`mb-2 flex items-center gap-3 rounded-xl py-2 text-sm font-medium text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text ${compact ? "justify-center" : "px-3"}`}
           >
             <ion-icon name='chevron-back-outline' className='text-lg'></ion-icon>
-            <span className={compact ? "sr-only" : ""}>Back to courses</span>
+            <span className={compact ? "sr-only" : ""}>{backLabel}</span>
           </Link>
         )}
         {!compact && <SectionLabel>General</SectionLabel>}
@@ -194,7 +200,9 @@ export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, 
 };
 
 export const Sidebar = ({ onClose, compact = false, notesOpen = false, onNotesToggle, onExpandToggle }) => {
-  const studyMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+  const courseMatch = useMatch(`${ROUTE_LEARN}/:topic`);
+  const virtualMatch = useMatch(`${ROUTE_VIRTUAL_READER}/:topic`);
+  const studyMatch = courseMatch || virtualMatch;
 
   return (
     <aside className='flex h-full w-full shrink-0 flex-col overflow-hidden border-r border-dr-border bg-dr-surface'>

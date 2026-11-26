@@ -18,6 +18,7 @@ type inboxNotification struct {
 	JobID            *int64 `json:"jobId"`
 	InvitationID     *int64 `json:"invitationId"`
 	CourseTitle      string `json:"courseTitle"`
+	Source           string `json:"source"`
 	CourseAvailable  bool   `json:"courseAvailable"`
 	ActorUsername    string `json:"actorUsername"`
 	InvitationStatus string `json:"invitationStatus"`
@@ -48,10 +49,10 @@ func ListNotifications(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	query := `SELECT n.id,n.type,n.job_id,n.invitation_id,COALESCE(c.title,n.course_title),
+	query := `SELECT n.id,n.type,n.job_id,n.invitation_id,COALESCE(c.title,n.course_title),COALESCE(c.source,j.source,''),
 		CASE WHEN c.id IS NOT NULL AND (n.type <> 'course_succeeded' OR c.user_id=n.user_id) THEN 1 ELSE 0 END,
 		n.actor_username,n.invitation_status,n.read_at IS NOT NULL,n.archived_at IS NOT NULL,n.created_at
-		FROM notifications n LEFT JOIN courses c ON c.id=n.course_id WHERE n.user_id=?`
+		FROM notifications n LEFT JOIN courses c ON c.id=n.course_id LEFT JOIN course_jobs j ON j.id=n.job_id WHERE n.user_id=?`
 	args := []interface{}{user.Id}
 	if view == "archived" {
 		query += ` AND n.archived_at IS NOT NULL`
@@ -81,7 +82,7 @@ func ListNotifications(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var n inboxNotification
 		var jobID, invitationID sql.NullInt64
-		if err := rows.Scan(&n.ID, &n.Type, &jobID, &invitationID, &n.CourseTitle, &n.CourseAvailable, &n.ActorUsername, &n.InvitationStatus, &n.Read, &n.Archived, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Type, &jobID, &invitationID, &n.CourseTitle, &n.Source, &n.CourseAvailable, &n.ActorUsername, &n.InvitationStatus, &n.Read, &n.Archived, &n.CreatedAt); err != nil {
 			sendJobResponse(w, 500, nil, "Could not load notifications")
 			return
 		}

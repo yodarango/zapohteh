@@ -30,6 +30,7 @@ type SharedCourse struct {
 	// to tell chapter headings apart from structural source headings.
 	Chapters []string `json:"chapters"`
 	Imported bool     `json:"imported"`
+	Source   string   `json:"source"`
 }
 
 // SharedNote is the public view of a note attached to a shared lesson.
@@ -140,13 +141,14 @@ func GetSharedCourse(token string, viewer *AuthUser) (*SharedCourse, error) {
 		cover         sql.NullString
 		lang          sql.NullString
 		ownerUsername string
+		source        string
 	)
 	err := ModelsRepo.DB.Conn.QueryRow(`
-		SELECT c.id, c.user_id, c.title, c.cover_image_path, c.language, u.username
+		SELECT c.id, c.user_id, c.title, c.cover_image_path, c.language, u.username, c.source
 		FROM courses c
 		JOIN users u ON u.id = c.user_id
 		WHERE c.share_token = ?
-	`, token).Scan(&courseID, &ownerID, &title, &cover, &lang, &ownerUsername)
+	`, token).Scan(&courseID, &ownerID, &title, &cover, &lang, &ownerUsername, &source)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("this share link is invalid or has been disabled")
 	}
@@ -194,6 +196,7 @@ func GetSharedCourse(token string, viewer *AuthUser) (*SharedCourse, error) {
 		Owner:          ownerUsername,
 		Chapters:       research.ChapterTitles(),
 		Imported:       research.IsImported(),
+		Source:         source,
 	}
 	if cover.Valid {
 		shared.CoverImagePath = cover.String

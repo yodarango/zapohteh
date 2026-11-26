@@ -526,13 +526,13 @@ func processCourseNotification() error {
 	if err != nil {
 		return err
 	}
-	var email, firstName, title string
+	var email, firstName, title, source string
 	var attempts int
-	if err = db.QueryRow(`SELECT u.email,u.first_name,j.course_title,n.attempts FROM course_jobs j JOIN users u ON u.id=j.user_id JOIN course_job_notifications n ON n.job_id=j.id WHERE j.id=?`, id).Scan(&email, &firstName, &title, &attempts); err != nil {
+	if err = db.QueryRow(`SELECT u.email,u.first_name,j.course_title,j.source,n.attempts FROM course_jobs j JOIN users u ON u.id=j.user_id JOIN course_job_notifications n ON n.job_id=j.id WHERE j.id=?`, id).Scan(&email, &firstName, &title, &source, &attempts); err != nil {
 		_, _ = db.Exec(`UPDATE course_job_notifications SET status='pending',next_attempt_at=datetime('now','+5 minutes') WHERE job_id=?`, id)
 		return err
 	}
-	err = lib.NewEmailService().SendCourseReadyEmail(email, firstName, title)
+	err = lib.NewEmailService().SendCourseReadyEmail(email, firstName, title, models.IsVirtualSource(source))
 	if err != nil {
 		status := "pending"
 		if attempts >= 3 {

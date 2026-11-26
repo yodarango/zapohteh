@@ -4,6 +4,11 @@ export const ROUTE_NOTIFICATIONS = "/notifications";
 export const ROUTE_AUTH = "/auth";
 export const ROUTE_AUTH_VERIFY = "/auth/verify";
 export const ROUTE_LEARN = "/learn";
+export const ROUTE_VIRTUALS = "/virtuals";
+export const ROUTE_VIRTUAL_READER = "/learn/virtual";
+export const isVirtualSource = (source) => source === "doc" || source === "web";
+export const lessonPath = (title, source) =>
+  `${isVirtualSource(source) ? ROUTE_VIRTUAL_READER : ROUTE_LEARN}/${encodeURIComponent(title)}`;
 export const ROUTE_COURSES = "/courses";
 export const ROUTE_USERS_ME = "/users/me";
 
@@ -22,6 +27,7 @@ export const API_POST_UPDATE_PROFILE = API_BASE + "/update-profile";
 export const API_POST_LEARN_ABOUT = API_BASE + "/learn-about";
 export const API_POST_LEARN_FROM_SOURCE = API_BASE + "/learn-from-source";
 export const API_COURSE_JOBS = API_BASE + "/course-jobs";
+export const API_VIRTUAL_CHECKPOINT = API_BASE + "/virtual-checkpoint";
 export const API_NOTIFICATIONS = API_BASE + "/notifications";
 export const API_GET_TOPIC = API_BASE + "/topic";
 export const API_GET_COURSES = API_BASE + "/courses";

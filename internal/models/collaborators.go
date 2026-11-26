@@ -428,10 +428,12 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 
 	// (b) courses owned by others where I am an accepted collaborator.
 	collabRows, err := ModelsRepo.DB.Conn.Query(`
-		SELECT c.user_id, c.title, c.cover_image_path, c.language, c.source, c.created_at, u.username
+		SELECT c.user_id, c.title, c.cover_image_path, c.language, c.source, c.created_at, u.username,
+		       COALESCE(v.revision, ''), COALESCE(v.word_index, 0), COALESCE(v.word_count, 0)
 		FROM course_collaborators cc
 		JOIN courses c ON c.id = cc.course_id
 		JOIN users u ON u.id = c.user_id
+		LEFT JOIN virtual_checkpoints v ON v.course_id = c.id AND v.user_id = cc.user_id
 		WHERE cc.user_id = ? AND cc.status = 'accepted'
 		ORDER BY c.title
 	`, userId)
@@ -469,15 +471,16 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 
 	for collabRows.Next() {
 		var (
-			ownerId   uint
-			title     string
-			cover     sql.NullString
-			language  sql.NullString
-			source    sql.NullString
-			createdAt time.Time
-			ownerName string
+			ownerId    uint
+			title      string
+			cover      sql.NullString
+			language   sql.NullString
+			source     sql.NullString
+			createdAt  time.Time
+			ownerName  string
+			checkpoint VirtualCheckpoint
 		)
-		if err := collabRows.Scan(&ownerId, &title, &cover, &language, &source, &createdAt, &ownerName); err != nil {
+		if err := collabRows.Scan(&ownerId, &title, &cover, &language, &source, &createdAt, &ownerName, &checkpoint.Revision, &checkpoint.WordIndex, &checkpoint.WordCount); err != nil {
 			return nil, fmt.Errorf("failed to scan collaborated course: %w", err)
 		}
 
@@ -494,25 +497,27 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 		if src == "" {
 			src = CourseSourceAI
 		}
+		checkpointPercent := 0
+		if IsVirtualSource(src) {
+			checkpointPercent = research.checkpointPercent(checkpoint)
+		}
 
 		shared = append(shared, Course{
-			ID:             folderName,
-			Name:           utils.ToTitleCase(folderName),
-			CoverImagePath: cover.String,
-			Language:       language.String,
-			Source:         src,
-			TotalChapters:  total,
-			ReadChapters:   readCount,
-			CreatedAt:      createdAt,
-			LastReadAt:     lastReadAts[folderName],
-			CompletedAt:    completedAt,
-			Role:           CourseRoleCollaborator,
-			Owner:          ownerName,
+			ID:                folderName,
+			Name:              utils.ToTitleCase(folderName),
+			CoverImagePath:    cover.String,
+			Language:          language.String,
+			Source:            src,
+			TotalChapters:     total,
+			ReadChapters:      readCount,
+			CheckpointPercent: checkpointPercent,
+			CreatedAt:         createdAt,
+			LastReadAt:        lastReadAts[folderName],
+			CompletedAt:       completedAt,
+			Role:              CourseRoleCollaborator,
+			Owner:             ownerName,
 		})
 	}
 
 	return shared, nil
 }
-
-
-

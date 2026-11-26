@@ -23,6 +23,8 @@ import {
   ROUTE_HOME,
   ROUTE_AUTH,
   ROUTE_LEARN,
+  ROUTE_VIRTUALS,
+  ROUTE_VIRTUAL_READER,
   ROUTE_SUBJECTS,
   ROUTE_USERS_ME,
   ROUTE_CREATE,
@@ -36,13 +38,15 @@ const router = createBrowserRouter(
     <Route element={<Outlet />}>
       <Route element={<ProtectedRoute />}>
         <Route element={<MainLayout />} errorElement={<></>}>
-          <Route path={ROUTE_HOME} element={<CoursesView />} />
+          <Route path={ROUTE_HOME} element={<CoursesView key='courses' />} />
+          <Route path={ROUTE_VIRTUALS} element={<CoursesView key='virtuals' virtuals />} />
           <Route path={ROUTE_CREATE} element={<IndexView />} />
           <Route path={ROUTE_NOTIFICATIONS} element={<NotificationsView />} />
           <Route path={ROUTE_SUBJECTS} element={<SubjectsView />} />
           <Route path={ROUTE_HIGHLIGHTS} element={<HighlightsView />} />
           <Route path={ROUTE_USERS_ME} element={<MeView />} />
           <Route path={`${ROUTE_LEARN}/:topic`} element={<LearnView />} />
+          <Route path={`${ROUTE_VIRTUAL_READER}/:topic`} element={<LearnView />} />
         </Route>
       </Route>
 

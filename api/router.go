@@ -15,7 +15,7 @@ import (
 	"zapohteh/internal/utils"
 )
 
-func Router () http.Handler {
+func Router() http.Handler {
 
 	mux := http.NewServeMux()
 
@@ -30,6 +30,8 @@ func Router () http.Handler {
 	mux.HandleFunc("POST /api/notifications/actions", models.Authenticate(NotificationActions))
 	mux.HandleFunc("POST /api/notifications/{id}/respond", models.Authenticate(RespondToNotificationInvitation))
 	mux.HandleFunc(constants.ROUTE_GET_TOPIC, models.Authenticate(GetTopic))
+	mux.HandleFunc("GET /api/virtual-checkpoint", models.Authenticate(VirtualCheckpointHandler))
+	mux.HandleFunc("PUT /api/virtual-checkpoint", models.Authenticate(VirtualCheckpointHandler))
 	mux.HandleFunc(constants.ROUTE_GET_COURSES, models.Authenticate(GetCourses))
 	mux.HandleFunc(constants.ROUTE_DELETE_COURSE, models.Authenticate(DeleteCourse))
 	mux.HandleFunc(constants.ROUTE_PUT_COURSE, models.Authenticate(PutCourse))
@@ -89,7 +91,6 @@ func Router () http.Handler {
 	mux.HandleFunc(constants.ROUTE_GET_NOTES, models.Authenticate(NotesHandler))
 	mux.HandleFunc(constants.ROUTE_PUT_NOTES, models.Authenticate(UpdateNoteHandler))
 	mux.HandleFunc(constants.ROUTE_DELETE_NOTES, models.Authenticate(DeleteNoteHandler))
-
 
 	// Serve static files from the frontend build
 	staticPath := os.Getenv("STATIC_PATH")
@@ -152,7 +153,6 @@ func SampleAuth(w http.ResponseWriter, r *http.Request) {
 func SamplePub(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 
-
 	httpResponse.Data = "Hello"
 	httpResponse.Success = true
 	httpResponse.Error = nil
@@ -186,19 +186,16 @@ func LearnAbout(w http.ResponseWriter, r *http.Request) {
 
 	research.UserID = authUser.Id
 
-	// Persist the selected language early so the course row exists and has the
-	// language even if later steps (e.g. cover image generation) fail or are skipped.
 	courseTitle := research.Title
 	if strings.TrimSpace(courseTitle) == "" {
 		courseTitle = research.Topic
 	}
 	courseTitle = utils.SanitizeFilename(courseTitle)
-	if err := models.SaveCourseLanguage(authUser.Id, courseTitle, research.Language); err != nil {
-		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+	if err := models.ReserveAICourseTitle(authUser.Id, courseTitle); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	// Re-using a title through the AI pipeline resets the course source badge.
-	if err := models.SetCourseSource(authUser.Id, courseTitle, models.CourseSourceAI); err != nil {
+	if err := models.SaveCourseLanguage(authUser.Id, courseTitle, research.Language); err != nil {
 		http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
 		return
 	}
@@ -281,6 +278,7 @@ func GetCourses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
+	courses = filterLibrary(courses, q.Get("library"))
 
 	search := strings.ToLower(strings.TrimSpace(q.Get("search")))
 	if search != "" {
@@ -724,8 +722,8 @@ func PutCourseHighlights(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var requestBody struct {
-		Topic      string                `json:"topic"`
-		Highlights []models.Highlight    `json:"highlights"`
+		Topic      string             `json:"topic"`
+		Highlights []models.Highlight `json:"highlights"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		httpResponse.Error = "Invalid request format"
@@ -998,7 +996,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 	// The lesson is readable by its owner and by accepted collaborators; the
 	// content lives under the owner's folder either way. The caller's own course
 	// wins when both share the same title.
-	ownerId, _, role, err := models.ResolveCourseAccess(authUser.Id, name)
+	ownerId, courseID, role, err := models.ResolveCourseAccess(authUser.Id, name)
 	if err != nil {
 		httpResponse.Error = "topic not found"
 		httpResponse.Success = false
@@ -1035,6 +1033,12 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 		"role":           role,
 		"chapters":       research.ChapterTitles(),
 		"imported":       research.IsImported(),
+	}
+	if source, err := models.CourseSourceByID(courseID); err == nil {
+		data["source"] = source
+		if models.IsVirtualSource(source) {
+			data["revision"] = models.ContentRevision(content, bibliography)
+		}
 	}
 	// only the owner manages the public share link
 	if role == models.CourseRoleOwner {
@@ -1085,6 +1089,16 @@ func ChapterImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, courseID, role, err := models.ResolveCourseAccess(authUser.Id, requestBody.Topic)
+	if err != nil || role != models.CourseRoleOwner {
+		sendJobResponse(w, http.StatusNotFound, nil, "Course not found")
+		return
+	}
+	source, err := models.CourseSourceByID(courseID)
+	if err != nil || models.IsVirtualSource(source) {
+		sendJobResponse(w, http.StatusBadRequest, nil, "Chapter images are only available for AI courses")
+		return
+	}
 	research := models.Research{Title: requestBody.Topic, UserID: authUser.Id}
 	err = research.GenerateChapterImage(requestBody.Chapter)
 	if err != nil {
@@ -1221,10 +1235,10 @@ func PostReadingProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var requestBody struct {
-		Course      string `json:"course"`
-		Chapter     string `json:"chapter"`
-		ChapterIndex int   `json:"chapterIndex"`
-		Read        bool   `json:"read"`
+		Course       string `json:"course"`
+		Chapter      string `json:"chapter"`
+		ChapterIndex int    `json:"chapterIndex"`
+		Read         bool   `json:"read"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&requestBody)
@@ -1560,7 +1574,7 @@ func CourseSubjectsHandler(w http.ResponseWriter, r *http.Request) {
 *
 * status: ✅
 ************************************************************************/
-func Login(w http.ResponseWriter, r *http.Request){
+func Login(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1586,7 +1600,7 @@ func Login(w http.ResponseWriter, r *http.Request){
 
 	data := map[string]interface{}{
 		"AuthToken": token,
-		"User": user,
+		"User":      user,
 	}
 
 	httpResponse.Data = data
@@ -1600,7 +1614,7 @@ func Login(w http.ResponseWriter, r *http.Request){
 *
 * status: ✅
 ************************************************************************/
-func Signup(w http.ResponseWriter, r *http.Request){
+func Signup(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1626,9 +1640,8 @@ func Signup(w http.ResponseWriter, r *http.Request){
 
 	data := map[string]interface{}{
 		"AuthToken": token,
-		"User": user,
+		"User":      user,
 	}
-
 
 	httpResponse.Success = false
 	httpResponse.Data = data
@@ -1641,7 +1654,7 @@ func Signup(w http.ResponseWriter, r *http.Request){
 *
 * status: ✅
 ************************************************************************/
-func VerifyEmail(w http.ResponseWriter, r *http.Request){
+func VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1679,7 +1692,7 @@ func VerifyEmail(w http.ResponseWriter, r *http.Request){
 
 	data := map[string]interface{}{
 		"AuthToken": token,
-		"User": user,
+		"User":      user,
 	}
 
 	httpResponse.Data = data
@@ -1695,7 +1708,7 @@ func VerifyEmail(w http.ResponseWriter, r *http.Request){
 *
 * status: ✅
 ************************************************************************/
-func ForgotPassword(w http.ResponseWriter, r *http.Request){
+func ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1723,7 +1736,7 @@ func ForgotPassword(w http.ResponseWriter, r *http.Request){
 *
 * status: ✅
 ************************************************************************/
-func ChangePassword(w http.ResponseWriter, r *http.Request){
+func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1759,7 +1772,7 @@ func ChangePassword(w http.ResponseWriter, r *http.Request){
 * Updates user profile (first name, last name, username, email, avatar)
 * status: ✅
 ************************************************************************/
-func UpdateProfile(w http.ResponseWriter, r *http.Request){
+func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	var httpResponse models.HttpResponse
 	var user models.User
 
@@ -1837,7 +1850,6 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request){
 	httpResponse.Error = nil
 	httpResponse.Send(w)
 }
-
 
 /************************************************************************
 * Dispatches chat requests to the correct method handler.
@@ -2182,7 +2194,6 @@ func containsInt(list []int, value int) bool {
 	return false
 }
 
-
 /************************************************************************
 * Transform accepts images, PDFs or raw text and converts them into a
 * single audiobook MP3. Progress is streamed back as Server-Sent Events.
@@ -2234,10 +2245,10 @@ func Transform(w http.ResponseWriter, r *http.Request) {
 
 	req.OnProgress = func(step, totalSteps, progress int, message string, current *models.StepProgress) {
 		sendEvent("progress", map[string]interface{}{
-			"step":             step,
-			"totalSteps":       totalSteps,
-			"progress":         progress,
-			"message":          message,
+			"step":               step,
+			"totalSteps":         totalSteps,
+			"progress":           progress,
+			"message":            message,
 			"currentStepProcess": current,
 		})
 	}

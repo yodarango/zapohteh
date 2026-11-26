@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Checkbox } from "@ds";
-import { API_NOTIFICATIONS, ROUTE_CREATE, ROUTE_LEARN } from "@constants";
+import { API_NOTIFICATIONS, ROUTE_CREATE, lessonPath, isVirtualSource } from "@constants";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 
@@ -11,7 +11,7 @@ const buttonStyle =
 function labelFor(item) {
   switch (item.type) {
     case "course_succeeded":
-      return `Your course “${item.courseTitle}” is ready.`;
+      return `Your ${isVirtualSource(item.source) ? "Virtual" : "course"} “${item.courseTitle}” is ready.`;
     case "course_failed":
       return `Creation of “${item.courseTitle}” failed.`;
     case "course_interrupted":
@@ -169,8 +169,8 @@ export const NotificationsView = () => {
   const openItem = async (item) => {
     if (!item.read && !(await action("read", [item.id]))) return;
     if (item.type === "course_succeeded")
-      navigate(`${ROUTE_LEARN}/${encodeURIComponent(item.courseTitle)}`);
-    else navigate(ROUTE_CREATE);
+      navigate(lessonPath(item.courseTitle, item.source));
+    else navigate(`${ROUTE_CREATE}?type=${isVirtualSource(item.source) ? "virtuals" : "courses"}`);
   };
 
   const selectedItems = items.filter((item) => selected.includes(item.id));

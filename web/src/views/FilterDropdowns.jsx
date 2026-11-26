@@ -21,6 +21,7 @@ export const FilterDropdowns = ({
   selectedSubjects,
   setSelectedSubjects,
   selectedStatus,
+  showStatus = true,
   setSelectedStatus,
   selectedYears,
   setSelectedYears,
@@ -43,7 +44,7 @@ export const FilterDropdowns = ({
       }))}
       className='w-[calc(50%-0.25rem)] sm:w-40'
     />
-    <Select
+    {showStatus && <Select
       aria-label='Filter by course status'
       value={selectedStatus}
       onChange={setSelectedStatus}
@@ -53,7 +54,7 @@ export const FilterDropdowns = ({
         { value: "incomplete", label: "Incomplete" },
       ]}
       className='w-[calc(50%-0.25rem)] sm:w-40'
-    />
+    />}
     <Select
       aria-label='Filter by years'
       placeholder='Years'

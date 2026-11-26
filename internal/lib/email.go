@@ -19,7 +19,7 @@ type EmailService struct {
 }
 
 // SendCourseReadyEmail sends a link to a successfully created course.
-func (es *EmailService) SendCourseReadyEmail(toEmail, firstName, title string) error {
+func (es *EmailService) SendCourseReadyEmail(toEmail, firstName, title string, virtual bool) error {
 	if es.SMTPHost == "" || es.SMTPPort == "" || es.SMTPUsername == "" || es.SMTPPassword == "" || es.FromEmail == "" {
 		return fmt.Errorf("SMTP configuration is incomplete")
 	}
@@ -33,10 +33,14 @@ func (es *EmailService) SendCourseReadyEmail(toEmail, firstName, title string) e
 		return fmt.Errorf("failed to parse course email template: %w", err)
 	}
 	var body bytes.Buffer
-	if err := tmpl.Execute(&body, struct{ FirstName, Title, CourseURL string }{firstName, title, baseURL + "/learn/" + url.PathEscape(title)}); err != nil {
+	kind, route := "course", "/learn/"
+	if virtual {
+		kind, route = "Virtual", "/learn/virtual/"
+	}
+	if err := tmpl.Execute(&body, struct{ FirstName, Title, CourseURL, Kind string }{firstName, title, baseURL + route + url.PathEscape(title), kind}); err != nil {
 		return err
 	}
-	message := fmt.Sprintf("To: %s\r\nSubject: Your course is ready\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", toEmail, body.String())
+	message := fmt.Sprintf("To: %s\r\nSubject: Your %s is ready\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", toEmail, kind, body.String())
 	auth := smtp.PlainAuth("", es.SMTPUsername, es.SMTPPassword, es.SMTPHost)
 	return smtp.SendMail(es.SMTPHost+":"+es.SMTPPort, auth, es.FromEmail, []string{toEmail}, []byte(message))
 }
