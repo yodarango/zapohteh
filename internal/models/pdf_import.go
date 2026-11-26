@@ -16,9 +16,6 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
-// maxPDFImportPages caps how many pages of an imported PDF are processed.
-const maxPDFImportPages = 200
-
 var (
 	pdfPageHeading     = regexp.MustCompile(`(?i)^(?:page|p\.)\s*\d+\b`)
 	pdfNumberedHeading = regexp.MustCompile(`(?i)^(?:(?:chapter|section|part|appendix)\s+[0-9ivxlcdm]+\b|\d+(?:\.\d+)*[.)]\s+\S|[IVXLCDM]+\.\s+[A-Z])`)
@@ -75,10 +72,6 @@ func (r *Research) ExtractPDFSource(data []byte, progress func(phase, detail str
 	if numPages == 0 {
 		return fmt.Errorf("the PDF has no pages")
 	}
-	if numPages > maxPDFImportPages {
-		return fmt.Errorf("the PDF has %d pages, over the %d page limit", numPages, maxPDFImportPages)
-	}
-
 	outlineTitles := make(map[string]int)
 	collectPDFOutline(reader.Outline(), 0, outlineTitles)
 	pages := make([]pdfImportPage, numPages)

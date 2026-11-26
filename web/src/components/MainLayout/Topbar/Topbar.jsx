@@ -9,7 +9,7 @@ import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 import zapohtehLogo from "../../../../public/logo.webp";
 
-export const Topbar = ({ onMenuToggle }) => {
+export const Topbar = ({ onMenuToggle, isMenuOpen = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { openLearnMenu, unreadNotifications } = useAppContext();
@@ -73,12 +73,15 @@ export const Topbar = ({ onMenuToggle }) => {
   };
 
   return (
-    <header className='flex items-center justify-between gap-4 rounded-3xl border border-dr-border bg-dr-surface px-6 py-4 shadow-sm'>
+    <header className='flex h-[72px] items-center justify-between gap-4 border-b border-dr-border bg-dr-surface px-4 lg:px-6'>
       {/* Mobile hamburger */}
       <div className='flex items-center gap-2 lg:hidden'>
         <button
           type='button'
           onClick={onMenuToggle}
+          aria-label='Open navigation'
+          aria-expanded={isMenuOpen}
+          aria-controls={isMenuOpen ? "main-navigation" : undefined}
           className='flex h-10 w-10 items-center justify-center rounded-xl text-dr-text transition-colors hover:bg-dr-surface-light'
         >
           <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
@@ -141,7 +144,7 @@ export const Topbar = ({ onMenuToggle }) => {
       <div className='flex items-center gap-3'>
         <div className='flex items-center gap-2 lg:hidden'>
           <img src={zapohtehLogo} alt='Logo' className='h-8 w-8 rounded-lg object-contain' />
-          <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+          <span className='hidden text-lg font-bold text-dr-text sm:inline'>Zapohteh</span>
         </div>
         <button
           type='button'

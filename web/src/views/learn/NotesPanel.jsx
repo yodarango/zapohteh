@@ -8,9 +8,7 @@ import {
 import { marked } from 'marked';
 import { authHeaders } from '@utils';
 import { useAppContext } from '@views/context/appContextProvider';
-import { SidebarNav } from '@components/MainLayout/Sidebar/Sidebar';
 import { avatars } from '@images';
-import zapohtehLogo from '../../../public/logo.webp';
 
 const DEBOUNCE_MS = 3000;
 
@@ -18,7 +16,6 @@ export const NotesPanel = ({ topic }) => {
   const { showToast, state } = useAppContext();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,42 +129,13 @@ export const NotesPanel = ({ topic }) => {
   };
 
   return (
-    <div className='flex h-full flex-col gap-4 overflow-y-auto px-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
-      <div className='flex items-center gap-3 rounded-xl border border-dr-border bg-dr-surface p-3 shadow-sm'>
-        <img
-          src={zapohtehLogo}
-          alt='Logo'
-          className='h-8 w-8 rounded-lg object-contain'
-        />
-        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
-        <button
-          type='button'
-          onClick={() => setNavOpen(true)}
-          className='ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-dr-text transition-colors hover:bg-dr-surface-light'
-          aria-label='Open menu'
-        >
-          <ion-icon name='menu-outline' className='text-2xl'></ion-icon>
-        </button>
-      </div>
-
-      {navOpen && (
-        <>
-          <div
-            className='fixed inset-0 z-30 bg-dr-accent/40'
-            onClick={() => setNavOpen(false)}
-          />
-          <div className='fixed left-0 top-0 z-40 flex h-full w-72 flex-col overflow-hidden rounded-none border-y-0 border-l-0 border-r border-dr-border bg-dr-surface shadow-lg'>
-            <SidebarNav onClose={() => setNavOpen(false)} showCloseButton />
-          </div>
-        </>
-      )}
-
+    <div className='flex flex-col gap-3 px-1 pb-4 pt-2'>
       <button
         type='button'
         onClick={createNote}
-        className='flex w-full items-center justify-end gap-2  text-dr-accent'
+        className='flex w-full items-center justify-end gap-2 text-sm font-medium text-dr-accent'
       >
-        <span className='text-lg'>+</span>
+        <ion-icon name='add-outline' className='text-lg'></ion-icon>
         Add note
       </button>
 
@@ -197,6 +165,7 @@ const NoteCard = ({ note, currentUserId, onUpdate, onDelete }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [body, setBody] = useState(note.body || '');
   const debounceTimerRef = useRef(null);
+  const pendingSaveRef = useRef(null);
   const textareaRef = useRef(null);
 
   // only the author manages (collapse/edit/delete) their note; notes of other
@@ -213,6 +182,11 @@ const NoteCard = ({ note, currentUserId, onUpdate, onDelete }) => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+      if (pendingSaveRef.current) {
+        const { save, id, value } = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        save(id, value);
+      }
     };
   }, []);
 
@@ -222,8 +196,12 @@ const NoteCard = ({ note, currentUserId, onUpdate, onDelete }) => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
+    pendingSaveRef.current = { save: onUpdate, id: note.id, value };
     debounceTimerRef.current = setTimeout(() => {
-      onUpdate(note.id, value);
+      const pending = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      debounceTimerRef.current = null;
+      if (pending) pending.save(pending.id, pending.value);
     }, DEBOUNCE_MS);
   };
 
@@ -294,6 +272,9 @@ const NoteCard = ({ note, currentUserId, onUpdate, onDelete }) => {
               type='button'
               onClick={(e) => {
                 e.stopPropagation();
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+                pendingSaveRef.current = null;
                 onDelete(note.id);
               }}
               className='flex h-6 w-6 items-center justify-center rounded text-dr-danger transition-colors hover:bg-dr-surface-light'

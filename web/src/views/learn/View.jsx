@@ -36,7 +36,6 @@ import {
   API_POST_COURSE_LEAVE,
   API_POST_NOTES,
   API_BASE,
-  ROUTE_HOME,
   ROUTE_LEARN,
   ROUTE_COURSES,
   // Narrate feature disabled for now — unused
@@ -1560,13 +1559,8 @@ export const LearnView = () => {
       <div
         onMouseUp={handleTextSelection}
         onClick={handleContentClick}
-        className='min-w-[400px] flex-1 max-w-[800px] overflow-y-auto h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+        className='min-w-0 flex-1 max-w-[800px] h-[calc(100vh-120px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       >
-        <Button secondary className='mb-6' onClick={() => navigate(ROUTE_HOME)}>
-          <ion-icon name='arrow-back-outline'></ion-icon>
-          <span className='ml-2'>Back</span>
-        </Button>
-
         <div className='relative mb-6'>
           {coverImagePath ? (
             <Thumbnail
@@ -1856,7 +1850,7 @@ export const LearnView = () => {
       )}
 
       <div
-        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 bg-dr-surface p-4 flex flex-col" : "hidden"} md:flex md:flex-col md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-100px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}
+        className={`${state.isLearnMenuOpen ? "fixed inset-0 z-50 bg-dr-surface p-4 flex flex-col" : "hidden"} md:flex md:flex-col md:sticky md:top-0 md:self-start md:border-l md:border-dr-border md:pl-4 md:h-[calc(100vh-120px)] overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:max-w-[400px] md:bg-transparent md:z-auto md:p-0`}
       >
         {state.isLearnMenuOpen && (
           <div className='mb-4 flex items-center justify-between md:hidden'>

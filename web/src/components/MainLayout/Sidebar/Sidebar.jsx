@@ -1,7 +1,8 @@
-import { NavLink, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useMatch } from "react-router-dom";
 import {
   ROUTE_CREATE,
   ROUTE_HOME,
+  ROUTE_LEARN,
   ROUTE_SUBJECTS,
   ROUTE_HIGHLIGHTS,
   ROUTE_USERS_ME,
@@ -19,17 +20,17 @@ const GENERAL = [
   { label: "Highlights", icon: "color-palette-outline", to: ROUTE_HIGHLIGHTS },
 ];
 
-const NavItem = ({ item, onClick }) => {
-  const base =
-    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors";
+const NavItem = ({ item, onClick, compact }) => {
+  const base = `flex items-center gap-3 rounded-xl py-2 text-sm font-medium transition-colors ${compact ? "justify-center px-0" : "px-3"}`;
 
   if (!item.to) {
     return (
       <div
         className={`${base} cursor-default text-dr-text-muted hover:bg-dr-surface-light`}
+        title={compact ? item.label : undefined}
       >
         <ion-icon name={item.icon} className='text-lg'></ion-icon>
-        <span>{item.label}</span>
+        <span className={compact ? "sr-only" : ""}>{item.label}</span>
       </div>
     );
   }
@@ -39,6 +40,7 @@ const NavItem = ({ item, onClick }) => {
       to={item.to}
       end
       onClick={onClick}
+      title={compact ? item.label : undefined}
       className={({ isActive }) =>
         `${base} ${
           isActive
@@ -48,7 +50,7 @@ const NavItem = ({ item, onClick }) => {
       }
     >
       <ion-icon name={item.icon} className='text-lg'></ion-icon>
-      <span>{item.label}</span>
+      <span className={compact ? "sr-only" : ""}>{item.label}</span>
     </NavLink>
   );
 };
@@ -59,8 +61,9 @@ const SectionLabel = ({ children }) => (
   </p>
 );
 
-export const SidebarNav = ({ onClose, showCloseButton = false }) => {
+export const SidebarNav = ({ onClose, showCloseButton = false, compact = false, notesOpen = false, onNotesToggle, onExpandToggle }) => {
   const navigate = useNavigate();
+  const studyMatch = useMatch(`${ROUTE_LEARN}/:topic`);
   const { state, logout } = useAppContext();
   const user = state?.user || {};
   const name =
@@ -70,10 +73,11 @@ export const SidebarNav = ({ onClose, showCloseButton = false }) => {
   return (
     <>
       {showCloseButton && onClose && (
-        <div className='flex items-center justify-end px-5 pt-4'>
+        <div className={`flex items-center justify-end pt-4 ${compact ? "px-2" : "px-5"}`}>
           <button
             type='button'
             onClick={onClose}
+            aria-label='Close navigation'
             className='flex h-8 w-8 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
           >
             <ion-icon name='close-outline' className='text-xl'></ion-icon>
@@ -82,33 +86,62 @@ export const SidebarNav = ({ onClose, showCloseButton = false }) => {
       )}
 
       {/* Brand */}
-      <div className='flex items-center gap-2 px-5 py-5'>
+      <div className={`flex items-center gap-2 py-5 ${compact ? "justify-center px-2" : "px-5"}`}>
         <img
           src={zapohtehLogo}
           alt='Logo'
           className='h-8 w-8 rounded-lg object-contain'
         />
-        <span className='text-lg font-bold text-dr-text'>Zapohteh</span>
+        <span className={compact ? "sr-only" : "text-lg font-bold text-dr-text"}>Zapohteh</span>
       </div>
 
-      <nav className='flex-1 overflow-y-auto px-3'>
-        <SectionLabel>General</SectionLabel>
+      <nav className='min-h-0 flex-1 overflow-y-auto px-3'>
+        {studyMatch && (
+          <Link
+            to={ROUTE_HOME}
+            onClick={onClose}
+            aria-label='Back to courses'
+            title='Back to courses'
+            className={`mb-2 flex items-center gap-3 rounded-xl py-2 text-sm font-medium text-dr-text-muted transition-colors hover:bg-dr-surface-light hover:text-dr-text ${compact ? "justify-center" : "px-3"}`}
+          >
+            <ion-icon name='chevron-back-outline' className='text-lg'></ion-icon>
+            <span className={compact ? "sr-only" : ""}>Back to courses</span>
+          </Link>
+        )}
+        {!compact && <SectionLabel>General</SectionLabel>}
         <div className='flex flex-col gap-1'>
           {GENERAL.map((item) => (
-            <NavItem key={item.label} item={item} onClick={onClose} />
+            <NavItem key={item.label} item={item} onClick={onClose} compact={compact} />
           ))}
         </div>
+        {studyMatch && (
+          <div className='mt-4 border-t border-dr-border pt-3'>
+            <button
+              type='button'
+              onClick={onNotesToggle}
+              aria-expanded={notesOpen}
+              title='Course notes'
+              className={`flex w-full items-center gap-3 rounded-xl py-2 text-left text-sm font-medium text-dr-text-muted transition-colors hover:bg-dr-surface-light ${compact ? "justify-center px-0" : "px-3"}`}
+            >
+              <ion-icon name='document-text-outline' className='text-lg'></ion-icon>
+              <span className={compact ? "sr-only" : "flex-1"}>Course notes</span>
+            </button>
+            {notesOpen && <NotesPanel key={studyMatch.params.topic} topic={studyMatch.params.topic} />}
+          </div>
+        )}
       </nav>
 
       <div className='border-t border-dr-border px-3 py-3'>
-        <NavItem item={{ label: "Settings", icon: "settings-outline" }} />
+        <NavItem item={{ label: "Settings", icon: "settings-outline" }} compact={compact} />
         <button
           type='button'
+          aria-label={compact ? `Account: ${name}` : undefined}
+          title={compact ? "Account" : undefined}
           onClick={() => {
             if (onClose) onClose();
             navigate(ROUTE_USERS_ME);
           }}
-          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-dr-surface-light'
+          className={`mt-2 flex w-full items-center gap-3 rounded-xl py-2 text-left transition-colors hover:bg-dr-surface-light ${compact ? "justify-center px-0" : "px-3"}`}
         >
           <div className='flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-dr-accent-light text-sm font-semibold text-dr-accent'>
             {chosenAvatar.image ? (
@@ -121,7 +154,7 @@ export const SidebarNav = ({ onClose, showCloseButton = false }) => {
               name.charAt(0).toUpperCase()
             )}
           </div>
-          <div className='min-w-0'>
+          <div className={compact ? "sr-only" : "min-w-0"}>
             <p className='truncate text-sm font-semibold text-dr-text'>
               {name}
             </p>
@@ -134,46 +167,37 @@ export const SidebarNav = ({ onClose, showCloseButton = false }) => {
         <button
           type='button'
           onClick={logout}
-          className='mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-dr-danger transition-colors hover:bg-dr-danger/10'
+          title={compact ? "Log out" : undefined}
+          className={`mt-2 flex w-full items-center gap-3 rounded-xl py-2 text-left text-sm font-medium text-dr-danger transition-colors hover:bg-dr-danger/10 ${compact ? "justify-center px-0" : "px-3"}`}
         >
-          <ion-icon name='log-out-outline' class='text-base'></ion-icon>
-          Log out
+          <ion-icon name='log-out-outline' className='text-base'></ion-icon>
+          <span className={compact ? "sr-only" : ""}>Log out</span>
         </button>
+        {studyMatch && (
+          <button
+            type='button'
+            onClick={onExpandToggle}
+            aria-label={compact ? "Expand navigation" : "Collapse navigation"}
+            aria-expanded={!compact}
+            title={compact ? "Expand navigation" : "Collapse navigation"}
+            className={`mt-2 flex w-full items-center gap-3 rounded-xl py-2 text-sm font-medium text-dr-text-muted transition-colors hover:bg-dr-surface-light ${compact ? "justify-center px-0" : "px-3"}`}
+          >
+            <span className='flex items-center' aria-hidden='true'>
+              <ion-icon name={compact ? "chevron-forward-outline" : "chevron-back-outline"} className='text-base'></ion-icon>
+              <ion-icon name={compact ? "chevron-forward-outline" : "chevron-back-outline"} className='-ml-2 text-base'></ion-icon>
+            </span>
+            {!compact && <span>Collapse navigation</span>}
+          </button>
+        )}
       </div>
     </>
   );
 };
 
-export const Sidebar = ({ onClose, className = "" }) => {
-  const { topic, token } = useParams();
-  const isLearnPage = !!topic;
-  const isSharedPage = !!token;
-
+export const Sidebar = ({ onClose, compact = false, notesOpen = false, onNotesToggle, onExpandToggle }) => {
   return (
-    <aside
-      className={`flex h-full w-full shrink-0 flex-col overflow-hidden ${isLearnPage ? "" : "rounded-3xl border border-dr-border bg-dr-surface shadow-sm"} ${className}`}
-    >
-      {isLearnPage || isSharedPage ? (
-        <>
-          {/* Mobile close button */}
-          {onClose && (
-            <div className='flex items-center justify-end px-5 pt-4 lg:hidden'>
-              <button
-                type='button'
-                onClick={onClose}
-                className='flex h-8 w-8 items-center justify-center rounded-lg text-dr-text-muted transition-colors hover:bg-dr-surface-light'
-              >
-                <ion-icon name='close-outline' className='text-xl'></ion-icon>
-              </button>
-            </div>
-          )}
-          <div className='flex-1 overflow-y-auto pt-5'>
-            <NotesPanel topic={topic} />
-          </div>
-        </>
-      ) : (
-        <SidebarNav onClose={onClose} showCloseButton />
-      )}
+    <aside className='flex h-full w-full shrink-0 flex-col overflow-hidden border-r border-dr-border bg-dr-surface'>
+      <SidebarNav onClose={onClose} showCloseButton compact={compact} notesOpen={notesOpen} onNotesToggle={onNotesToggle} onExpandToggle={onExpandToggle} />
     </aside>
   );
 };

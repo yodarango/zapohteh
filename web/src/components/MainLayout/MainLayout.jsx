@@ -1,18 +1,38 @@
-import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Outlet, useMatch } from "react-router-dom";
+import { ROUTE_LEARN } from "@constants";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { Topbar } from "./Topbar/Topbar";
 
 export const MainLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  console.log("{ topic, token }");
+  const [desktopNotesOpen, setDesktopNotesOpen] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
+  const [desktopNavExpanded, setDesktopNavExpanded] = useState(false);
+  const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
+  const isStudyPage = !!useMatch(`${ROUTE_LEARN}/:topic`);
+
+  useEffect(() => {
+    if (!isStudyPage) {
+      setDesktopNotesOpen(false);
+      setMobileNotesOpen(false);
+      setDesktopNavExpanded(false);
+      setMobileNavExpanded(false);
+    }
+  }, [isStudyPage]);
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+    setMobileNotesOpen(false);
+    setMobileNavExpanded(false);
+  };
 
   return (
-    <div className='min-h-screen bg-dr-bg p-3 lg:p-6'>
-      <div className='mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[100rem] gap-3 lg:gap-4 lg:min-h-[calc(100vh-3rem)]'>
+    <div className='min-h-screen bg-dr-bg'>
+      <div className='flex min-h-screen'>
         {/* Desktop sidebar */}
-        <div className='sticky top-3 z-20 hidden h-[90vh] w-[350px] shrink-0 self-start lg:top-6 lg:block'>
-          <Sidebar />
+        <div className={`sticky top-0 z-20 hidden h-screen shrink-0 self-start lg:block ${isStudyPage && !desktopNotesOpen && !desktopNavExpanded ? "w-16" : "w-[280px]"}`}>
+          <Sidebar compact={isStudyPage && !desktopNavExpanded} notesOpen={desktopNotesOpen} onNotesToggle={() => setDesktopNotesOpen((open) => !open)} onExpandToggle={() => { setDesktopNavExpanded((expanded) => !expanded); if (desktopNavExpanded) setDesktopNotesOpen(false); }} />
         </div>
 
         {/* Mobile drawer */}
@@ -20,22 +40,22 @@ export const MainLayout = () => {
           <>
             <div
               className='fixed inset-0 z-30 bg-dr-text/50 backdrop-blur-sm lg:hidden'
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={closeMobileMenu}
             />
-            <div className='fixed left-0 top-0 z-40 h-full w-64 lg:hidden'>
-              <Sidebar
-                onClose={() => setMobileMenuOpen(false)}
-                className='rounded-none border-y-0 border-l-0'
-              />
+            <div id='main-navigation' className={`fixed left-0 top-0 z-40 h-full lg:hidden ${isStudyPage && !mobileNotesOpen && !mobileNavExpanded ? "w-16" : "w-64"}`}>
+              <Sidebar onClose={closeMobileMenu} compact={isStudyPage && !mobileNavExpanded} notesOpen={mobileNotesOpen} onNotesToggle={() => setMobileNotesOpen((open) => !open)} onExpandToggle={() => { setMobileNavExpanded((expanded) => !expanded); if (mobileNavExpanded) setMobileNotesOpen(false); }} />
             </div>
           </>
         )}
 
-        <div className='flex min-w-0 flex-1 flex-col gap-3 lg:gap-4'>
+        <div className='flex min-w-0 flex-1 flex-col'>
           <div className='sticky top-0 z-10'>
-            <Topbar onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
+            <Topbar
+              onMenuToggle={() => setMobileMenuOpen((v) => !v)}
+              isMenuOpen={mobileMenuOpen}
+            />
           </div>
-          <main className='flex-1 overflow-y-auto lg:rounded-3xl lg:border lg:border-dr-border lg:bg-dr-surface lg:px-8 lg:py-6 lg:shadow-sm'>
+          <main className='mx-auto w-full max-w-[100rem] min-w-0 flex-1 px-4 py-6 lg:px-8'>
             <Outlet />
           </main>
         </div>
