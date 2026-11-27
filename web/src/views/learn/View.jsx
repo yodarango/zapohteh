@@ -177,16 +177,36 @@ const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isO
         <div className='flex flex-col gap-2'>
           {actions.map((action) => (
             <button
-              key={action.label}
+              key={action.id || action.label}
               type='button'
               onClick={action.onClick}
               disabled={action.disabled}
-              aria-label={action.label}
-              title={action.label}
-              className={`flex min-h-10 items-center gap-2 rounded-xl border text-sm font-semibold transition-colors disabled:opacity-50 ${isOpen ? "w-full px-3" : "w-12 justify-center"} ${action.danger ? "border-dr-danger text-dr-danger hover:bg-dr-danger/10" : "border-dr-border bg-dr-surface text-dr-text hover:bg-dr-surface-light"}`}
+              aria-label={action.description ? `${action.label}, ${action.description}` : action.label}
+              aria-busy={action.progress !== undefined || undefined}
+              title={action.description ? `${action.label} — ${action.description}` : action.label}
+              className={`relative isolate flex min-h-10 items-center gap-2 overflow-hidden rounded-xl border text-sm font-semibold transition-colors ${action.progress !== undefined ? "disabled:opacity-100" : "disabled:opacity-50"} ${isOpen ? "w-full px-3 py-2" : "w-12 justify-center"} ${action.danger ? "border-dr-danger text-dr-danger hover:bg-dr-danger/10" : "border-dr-border bg-dr-surface text-dr-text hover:bg-dr-surface-light"}`}
             >
-              <ion-icon name={action.icon} className='shrink-0 text-lg' />
-              {isOpen && <span>{action.label}</span>}
+              {action.progress !== undefined && (
+                <span
+                  role='progressbar'
+                  aria-label='Virtual cleanup progress'
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={action.progress}
+                  aria-valuetext={action.description}
+                  className={isOpen ? "pointer-events-none absolute inset-0 -z-10" : "pointer-events-none absolute left-1/2 top-1/2 -z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-50"}
+                  style={isOpen ? undefined : { background: `conic-gradient(from 0deg, #dcfce7 0% ${action.progress}%, #f0fdf4 ${action.progress}% 100%)` }}
+                >
+                  {isOpen && <span className='absolute inset-y-0 left-0 bg-green-100 transition-[width] duration-700 ease-out motion-reduce:transition-none' style={{ width: `${action.progress}%` }} />}
+                </span>
+              )}
+              <ion-icon name={action.icon} className='relative shrink-0 text-lg' />
+              {isOpen && (
+                <span className='relative min-w-0 text-left'>
+                  <span className='block'>{action.label}</span>
+                  {action.description && <span className='block text-xs font-normal text-dr-text-muted'>{action.description}</span>}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -226,6 +246,9 @@ export const LearnView = () => {
   const [checkpoint, setCheckpoint] = useState(null);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState(null);
   const [savingCheckpoint, setSavingCheckpoint] = useState(false);
+  const [cleanupJob, setCleanupJob] = useState(null);
+  const [startingCleanup, setStartingCleanup] = useState(false);
+  const observedCleanup = useRef(null);
   const readingRef = useRef(null);
   const checkpointRequest = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -290,6 +313,78 @@ export const LearnView = () => {
     ? Math.floor((currentCheckpoint.wordIndex + 1) * 100 / currentCheckpoint.wordCount)
     : 0;
   const checkpointUrl = `${API_VIRTUAL_CHECKPOINT}?topic=${encodeURIComponent(topic)}`;
+
+  const cleanupUrl = `${API_BASE}/virtual-cleanup?topic=${encodeURIComponent(topic)}`;
+  const cleanupRunning = startingCleanup || cleanupJob?.status === "running";
+  const cleanupProgress = Math.max(0, Math.min(100, Number(cleanupJob?.progress) || 0));
+  const cleanupRemaining = Number.isFinite(cleanupJob?.remainingSeconds) ? cleanupJob.remainingSeconds : null;
+  const cleanupTimeLeft = cleanupRemaining === null ? "Estimating time left…"
+    : cleanupRemaining < 60 ? `~${cleanupRemaining}s left`
+      : `~${Math.ceil(cleanupRemaining / 60)} min left`;
+  const cleanupDescription = startingCleanup ? "Starting…"
+    : cleanupJob?.phase === "queued" ? "Waiting for Tangereen…"
+      : cleanupJob?.phase === "finalizing" ? "Saving cleaned content…"
+        : `${cleanupProgress}% complete · ${cleanupTimeLeft}`;
+
+  useEffect(() => {
+    setCleanupJob(null);
+    setStartingCleanup(false);
+    observedCleanup.current = null;
+    if (!isVirtual || isShared || role !== "owner") return;
+    const controller = new AbortController();
+    let timer;
+    const poll = async () => {
+      try {
+        const response = await fetch(cleanupUrl, { headers: authHeaders(), signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || "Could not check cleanup status");
+        const job = result.data;
+        setCleanupJob(job);
+        const previous = observedCleanup.current;
+        if (previous?.id === job.id && previous.status === "running" && job.status !== "running") {
+          if (job.status === "completed") {
+            const topicResponse = await fetch(`${API_GET_TOPIC}?name=${encodeURIComponent(topic)}`, { headers: authHeaders(), signal: controller.signal });
+            const updated = await topicResponse.json();
+            if (!topicResponse.ok || !updated.success) throw new Error("Cleanup finished. Reload to see the cleaned content.");
+            setContent(updated.data.content || "");
+            setBibliography(updated.data.bibliography || "");
+            setRevision(updated.data.revision || "");
+            setChapterTitles(updated.data.chapters || null);
+            setCheckpoint(null);
+            setSelectedCheckpoint(null);
+            showToast({ type: "success", message: "Virtual cleaned up. Your reading checkpoint was reset." });
+          } else {
+            showToast({ type: "danger", message: job.error || "Cleanup failed. Your original content was preserved." });
+          }
+        }
+        observedCleanup.current = job;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        // A temporary status failure must not stop monitoring an active job.
+        if (observedCleanup.current?.status === "running") showToast({ type: "danger", message: error.message });
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, observedCleanup.current?.status === "running" ? 1000 : 4000);
+    };
+    void poll();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [cleanupUrl, isVirtual, isShared, role, topic, showToast]);
+
+  const cleanUpVirtual = async () => {
+    if (cleanupRunning) return;
+    setStartingCleanup(true);
+    try {
+      const response = await fetch(cleanupUrl, { method: "POST", headers: authHeaders() });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "Could not start cleanup");
+      setCleanupJob(result.data);
+      observedCleanup.current = result.data;
+      showToast({ type: "success", message: "Cleanup started in Tangereen. You can leave this page while it runs." });
+    } catch (error) {
+      showToast({ type: "danger", message: error.message });
+    } finally {
+      setStartingCleanup(false);
+    }
+  };
 
   useEffect(() => {
     setIsChaptersOpen(false);
@@ -2063,6 +2158,7 @@ export const LearnView = () => {
           onToggle={() => setIsChaptersOpen((open) => !open)}
           actions={[
             { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
+            ...(isVirtual && role === "owner" ? [{ id: "cleanup", label: cleanupRunning ? "Cleaning up…" : "Clean up", icon: "brush-outline", onClick: cleanUpVirtual, disabled: cleanupRunning, progress: cleanupRunning ? cleanupProgress : undefined, description: cleanupRunning ? cleanupDescription : undefined }] : []),
             ...(currentCheckpoint ? [{ label: "Resume reading", icon: "bookmark-outline", onClick: () => { closeLearnMenu(); resumeCheckpoint(); } }] : []),
             ...(role === "owner" ? [{ label: isVirtual ? "Delete Virtual" : "Delete course", icon: "trash-outline", onClick: () => setShowDeleteModal(true), danger: true }] : []),
           ]}

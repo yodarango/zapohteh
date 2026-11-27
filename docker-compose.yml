@@ -11,12 +11,16 @@ services:
       - STATIC_PATH=web/dist
       - CONTENT_DIR=/app/data
       - JOB_UPLOAD_DIR=/app/job-uploads
+      - VIRTUAL_CLEANUP_BACKUP_DIR=/app/cleanup-backups
+      - TANJREEN_API_KEY=${TANJREEN_API_KEY:-}
+      - TANJREEN_API_URL=${TANJREEN_API_URL:-https://tanjreen.shrood.app}
     networks:
       - app-network
     volumes:
       - .:/app
       - ${HOST_DATA_PATH:-./data}:/app/data
       - ${HOST_JOB_UPLOAD_PATH:-./job-uploads}:/app/job-uploads
+      - ${HOST_CLEANUP_BACKUP_PATH:-./.virtual-cleanup-backups}:/app/cleanup-backups
 
 networks:
   app-network:

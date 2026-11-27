@@ -13,6 +13,10 @@
  * *************************************************************************************************
  */
 export function splitChapters(markdown, chapterTitles) {
+  // An explicitly empty list means one whole cleaned document, with no inferred chapters.
+  if (Array.isArray(chapterTitles) && chapterTitles.length === 0) {
+    return { intro: (markdown || "").trim(), chapters: [] };
+  }
   const lines = (markdown || "").split("\n");
   const titles =
     Array.isArray(chapterTitles) && chapterTitles.length > 0
