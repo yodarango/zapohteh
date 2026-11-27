@@ -498,14 +498,17 @@ func ListSharedCourses(userId uint) ([]Course, error) {
 			src = CourseSourceAI
 		}
 		checkpointPercent := 0
+		narrationURL := ""
 		if IsVirtualSource(src) {
 			checkpointPercent = research.checkpointPercent(checkpoint)
+			narrationURL = research.NarrationURL()
 		}
 
 		shared = append(shared, Course{
 			ID:                folderName,
 			Name:              utils.ToTitleCase(folderName),
 			CoverImagePath:    cover.String,
+			NarrationURL:      narrationURL,
 			Language:          language.String,
 			Source:            src,
 			TotalChapters:     total,

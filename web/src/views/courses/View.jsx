@@ -8,9 +8,11 @@ import {
   Tooltip,
   ConfirmationModal,
   Button,
+  Modal,
 } from "@ds";
 import {
   API_GET_COURSES,
+  API_BASE,
   API_DELETE_COURSE,
   API_GET_SUBJECTS,
   API_GET_SHARED_COURSES,
@@ -77,7 +79,7 @@ const ReadingProgress = ({ course }) => {
  * own shared courses carry a small people marker.
  * *************************************************************************************************
  */
-const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
+const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker, onPlayNarration }) => (
   <div className='group relative flex flex-col gap-3 rounded-2xl border border-dr-border bg-dr-surface p-4 transition-colors hover:border-dr-accent'>
     <Link
       to={lessonPath(course.id, course.source)}
@@ -170,6 +172,22 @@ const CourseCard = ({ course, index, onDelete, onLeave, sharedMarker }) => (
         </div>
       )}
     </Link>
+
+    {isVirtualSource(course.source) && course.narrationUrl && (
+      <Button
+        type='button'
+        secondary
+        aria-label={`Play narration for ${course.name}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onPlayNarration(course);
+        }}
+      >
+        <ion-icon name='play-outline' className='text-lg' />
+        Play narration
+      </Button>
+    )}
 
     {onLeave ? (
       <Button
@@ -266,6 +284,9 @@ export const CoursesView = ({ virtuals = false }) => {
 
   const [courseToDelete, setCourseToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [playingNarration, setPlayingNarration] = useState(null);
+  const narrationAudioUrl = playingNarration
+    ? `${API_BASE.replace(/\/api\/?$/, "")}${playingNarration.narrationUrl}` : "";
 
   // "all" lists every own course with filters; "shared" lists the courses that
   // involve collaborators (mine with accepted collaborators + shared with me)
@@ -484,6 +505,7 @@ export const CoursesView = ({ virtuals = false }) => {
                   course={course}
                   index={index}
                   sharedMarker={course.role === "owner"}
+                  onPlayNarration={setPlayingNarration}
                   onDelete={
                     course.role === "owner"
                       ? (c) => setCourseToDelete(c)
@@ -545,12 +567,34 @@ export const CoursesView = ({ virtuals = false }) => {
               course={course}
               index={index}
               onDelete={(c) => setCourseToDelete(c)}
+              onPlayNarration={setPlayingNarration}
             />
           ))}
         </div>
       )}
         </>
       )}
+
+      <Modal
+        open={!!playingNarration}
+        onClose={() => setPlayingNarration(null)}
+        title={playingNarration ? `Narration · ${playingNarration.name}` : "Narration"}
+        role='dialog'
+        aria-modal='true'
+        aria-label='Virtual narration player'
+      >
+        {playingNarration && (
+          <audio
+            key={narrationAudioUrl}
+            src={narrationAudioUrl}
+            controls
+            autoPlay
+            className='w-full'
+            aria-label={`Narration for ${playingNarration.name}`}
+            onError={() => showToast({ type: "danger", message: "Could not play this narration. Open the Virtual to regenerate it." })}
+          />
+        )}
+      </Modal>
 
       <ConfirmationModal
         open={!!courseToDelete}

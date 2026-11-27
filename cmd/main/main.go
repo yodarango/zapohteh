@@ -43,6 +43,7 @@ func main() {
 	// pass repo to all necessary components
 	api.SetRouterConfig(appRepo)
 	models.SetModelsConfig(appRepo)
+	api.StartVirtualNarrationWorkers()
 	if err := api.StartCourseJobWorkers(); err != nil {
 		log.Fatalf("Unable to start course job workers: %v", err)
 	}

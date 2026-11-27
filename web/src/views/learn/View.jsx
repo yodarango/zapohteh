@@ -51,6 +51,7 @@ import { indexVirtualWords } from "./virtualWords";
 import { findHighlightMatches } from "./highlightMatches";
 import { ChatWidget } from "./ChatWidget";
 import { CollaborateModal } from "./CollaborateModal";
+import { NarrationSettingsModal } from "./NarrationSettingsModal";
 import { authHeaders } from "@utils";
 import { useAppContext } from "@views/context/appContextProvider";
 import { LoginForm } from "../auth/components/LoginForm/LoginForm";
@@ -194,10 +195,9 @@ const CourseNavigation = ({ chapters, readChapters, onChapterClick, actions, isO
                   aria-valuemax={100}
                   aria-valuenow={action.progress}
                   aria-valuetext={action.description}
-                  className={isOpen ? "pointer-events-none absolute inset-0 -z-10" : "pointer-events-none absolute left-1/2 top-1/2 -z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-50"}
-                  style={isOpen ? undefined : { background: `conic-gradient(from 0deg, #dcfce7 0% ${action.progress}%, #f0fdf4 ${action.progress}% 100%)` }}
+                  className='pointer-events-none absolute inset-0 -z-10'
                 >
-                  {isOpen && <span className='absolute inset-y-0 left-0 bg-green-100 transition-[width] duration-700 ease-out motion-reduce:transition-none' style={{ width: `${action.progress}%` }} />}
+                  <span className='absolute inset-y-0 left-0 bg-green-100 transition-[width] duration-700 ease-out motion-reduce:transition-none' style={{ width: `${action.progress}%` }} />
                 </span>
               )}
               <ion-icon name={action.icon} className='relative shrink-0 text-lg' />
@@ -249,6 +249,13 @@ export const LearnView = () => {
   const [cleanupJob, setCleanupJob] = useState(null);
   const [startingCleanup, setStartingCleanup] = useState(false);
   const observedCleanup = useRef(null);
+  const [narrationJob, setNarrationJob] = useState(null);
+  const [startingNarration, setStartingNarration] = useState(false);
+  const [narrationStatusLoaded, setNarrationStatusLoaded] = useState(false);
+  const [showNarrationSettings, setShowNarrationSettings] = useState(false);
+  const narrationSubmitting = useRef(false);
+  const observedNarration = useRef(null);
+  const audioRef = useRef(null);
   const readingRef = useRef(null);
   const checkpointRequest = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -383,6 +390,82 @@ export const LearnView = () => {
       showToast({ type: "danger", message: error.message });
     } finally {
       setStartingCleanup(false);
+    }
+  };
+
+  const narrationUrl = `${API_BASE}/virtual-narration?topic=${encodeURIComponent(topic)}`;
+  const narrationRunning = startingNarration || narrationJob?.status === "running";
+  const narrationProgress = Math.max(0, Math.min(100, Number(narrationJob?.progress) || 0));
+  const narrationSeconds = narrationJob?.remainingSeconds;
+  const narrationTime = Number.isFinite(narrationSeconds)
+    ? narrationSeconds < 60 ? `~${narrationSeconds}s left` : `~${Math.ceil(narrationSeconds / 60)} min left`
+    : "Estimating time left…";
+  const narrationDescription = startingNarration || narrationJob?.phase === "queued" ? "Starting in Tangereen…"
+    : narrationJob?.phase === "sanitizing" ? "Sanitizing text for narration…"
+      : narrationJob?.phase === "translating" ? "Translating text for narration…"
+        : narrationJob?.phase === "concatenating" ? "Joining the full MP3…"
+      : narrationJob?.phase === "saving" ? "Saving the finished MP3…"
+        : `${narrationProgress}% complete · ${narrationTime}`;
+  const narrationAudioUrl = narrationJob?.audioUrl
+    ? `${API_BASE.replace(/\/api\/?$/, "")}${narrationJob.audioUrl}?v=${encodeURIComponent(narrationJob.id || "saved")}` : "";
+
+  useEffect(() => {
+    setNarrationJob(null);
+    setStartingNarration(false);
+    setNarrationStatusLoaded(false);
+    setShowNarrationSettings(false);
+    narrationSubmitting.current = false;
+    observedNarration.current = null;
+    if (!isVirtual || isShared) return;
+    const controller = new AbortController();
+    let timer;
+    const poll = async () => {
+      const previousRequest = observedNarration.current;
+      try {
+        const response = await fetch(narrationUrl, { headers: authHeaders(), signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || result.errors || "Could not check narration status");
+        // A poll started before submission must not overwrite the newly accepted job.
+        if (narrationSubmitting.current || observedNarration.current !== previousRequest) {
+          if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
+          return;
+        }
+        const job = result.data;
+        setNarrationJob(job);
+        setNarrationStatusLoaded(true);
+        const previous = observedNarration.current;
+        if (previous?.id === job.id && previous.status === "running" && job.status !== "running") {
+          showToast({ type: job.status === "completed" ? "success" : "danger", message: job.status === "completed"
+            ? "Full narration saved to this Virtual’s sounds folder." : job.error || "Narration failed. Please try again." });
+        }
+        observedNarration.current = job;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        // Keep monitoring across transient network/server restarts.
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, observedNarration.current?.status === "running" ? 1000 : 4000);
+    };
+    void poll();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [narrationUrl, isVirtual, isShared, showToast]);
+
+  const narrateVirtual = async (settings) => {
+    if (narrationSubmitting.current || observedNarration.current?.status === "running" || narrationRunning || cleanupRunning) return;
+    narrationSubmitting.current = true;
+    setStartingNarration(true);
+    try {
+      const response = await fetch(narrationUrl, { method: "POST", headers: authHeaders(), body: JSON.stringify(settings) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || result.errors || "Could not start narration");
+      setNarrationJob(result.data);
+      observedNarration.current = result.data;
+      setShowNarrationSettings(false);
+      showToast({ type: "success", message: "Narration started in Tangereen with your selected settings. You can leave this page while it runs." });
+    } catch (error) {
+      showToast({ type: "danger", message: error.message });
+    } finally {
+      narrationSubmitting.current = false;
+      setStartingNarration(false);
     }
   };
 
@@ -1932,6 +2015,17 @@ export const LearnView = () => {
           </div>
         )}
 
+        {isVirtual && narrationAudioUrl && (
+          <div ref={audioRef} className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
+            <div className='mb-3 flex items-center gap-2 text-sm font-semibold'>
+              <ion-icon name='volume-high-outline' />
+              <span>Full narration</span>
+              <a href={narrationAudioUrl} download='narration.mp3' className='ml-auto text-dr-accent'>Download MP3</a>
+            </div>
+            <audio key={narrationAudioUrl} controls preload='none' src={narrationAudioUrl} className='w-full' aria-label='Full Virtual narration' />
+          </div>
+        )}
+
         {!isVirtual && chapters.length > 0 && (
           <div className='mb-6 rounded-2xl border border-dr-border bg-dr-surface p-4'>
             <div className='mb-2 flex items-center justify-between text-sm'>
@@ -2158,10 +2252,25 @@ export const LearnView = () => {
           onToggle={() => setIsChaptersOpen((open) => !open)}
           actions={[
             { label: "Download PDF", icon: "download-outline", onClick: downloadPDF },
-            ...(isVirtual && role === "owner" ? [{ id: "cleanup", label: cleanupRunning ? "Cleaning up…" : "Clean up", icon: "brush-outline", onClick: cleanUpVirtual, disabled: cleanupRunning, progress: cleanupRunning ? cleanupProgress : undefined, description: cleanupRunning ? cleanupDescription : undefined }] : []),
+            ...(isVirtual && role === "owner" ? [{ id: "cleanup", label: cleanupRunning ? "Cleaning up…" : "Clean up", icon: "brush-outline", onClick: cleanUpVirtual, disabled: cleanupRunning || narrationRunning, progress: cleanupRunning ? cleanupProgress : undefined, description: cleanupRunning ? cleanupDescription : undefined },
+              { id: "narration", label: narrationRunning ? "Narrating…" : narrationAudioUrl ? "Narrate again" : "Narrate", icon: "volume-high-outline", onClick: () => { if (!narrationSubmitting.current && observedNarration.current?.status !== "running") setShowNarrationSettings(true); }, disabled: !narrationStatusLoaded || narrationRunning || cleanupRunning, progress: narrationRunning ? narrationProgress : undefined, description: narrationRunning ? narrationDescription : undefined }] : []),
+            ...(isVirtual && narrationAudioUrl ? [{ label: "Play narration", icon: "play-outline", onClick: () => {
+              closeLearnMenu();
+              audioRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+              audioRef.current?.querySelector("audio")?.play().catch(() => showToast({ type: "info", message: "Press play on the narration player to listen." }));
+            } }] : []),
             ...(currentCheckpoint ? [{ label: "Resume reading", icon: "bookmark-outline", onClick: () => { closeLearnMenu(); resumeCheckpoint(); } }] : []),
             ...(role === "owner" ? [{ label: isVirtual ? "Delete Virtual" : "Delete course", icon: "trash-outline", onClick: () => setShowDeleteModal(true), danger: true }] : []),
           ]}
+        />
+
+        <NarrationSettingsModal
+          open={showNarrationSettings}
+          onClose={() => { if (!narrationSubmitting.current) setShowNarrationSettings(false); }}
+          onStart={narrateVirtual}
+          busy={startingNarration}
+          disabled={narrationRunning || cleanupRunning}
+          initialSettings={narrationJob?.settings}
         />
 
         <ConfirmationModal

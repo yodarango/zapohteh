@@ -61,8 +61,8 @@ with a `progress` object containing `phase`, `completedChunks`, `totalChunks`, a
 Go backend and exposed by the existing owner-authenticated status endpoint.
 
 Chunk processing fills 0–95%; the final 5% is reserved for saving/replacing content.
-The expanded Actions button fills pale green left-to-right, and the collapsed brush icon
-has a clockwise circular fill. Percentages describe completed work, so the unfilled part
+The Actions button fills pale green left-to-right in both expanded and collapsed panels,
+behind the brush icon. Percentages describe completed work, so the unfilled part
 represents work left. Time left is an estimate based on average completed-chunk duration,
 not a guaranteed countdown; before a chunk finishes, the UI says it is estimating.
 Queued jobs and final content replacement have separate labels. Progress is polled every

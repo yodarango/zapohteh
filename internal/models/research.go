@@ -125,6 +125,7 @@ type Course struct {
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`
 	CoverImagePath    string     `json:"coverImagePath"`
+	NarrationURL      string     `json:"narrationUrl,omitempty"`
 	Language          string     `json:"language"`
 	Source            string     `json:"source"`
 	TotalChapters     int        `json:"totalChapters"`
@@ -286,13 +287,16 @@ func ListCourses(userId uint) ([]Course, error) {
 			source = CourseSourceAI
 		}
 		checkpointPercent := 0
+		narrationURL := ""
 		if IsVirtualSource(source) {
 			checkpointPercent = research.checkpointPercent(checkpoints[name])
+			narrationURL = research.NarrationURL()
 		}
 		courses = append(courses, Course{
 			ID:                name,
 			Name:              utils.ToTitleCase(name),
 			CoverImagePath:    coverPaths[name],
+			NarrationURL:      narrationURL,
 			Language:          languages[name],
 			Source:            source,
 			TotalChapters:     total,
